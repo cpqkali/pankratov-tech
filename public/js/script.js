@@ -6,6 +6,8 @@ class RootzsuApp {
         this.isAdmin = false;
         this.services = [];
         this.settings = this.loadSettings();
+        // ВАЖНО: ID должен совпадать с бэкендом
+        this.googleClientId = "957687109285-gs24ojtjhjkatpi7n0rrpb1c57tf95e2.apps.googleusercontent.com"; 
         
         this.init();
     }
@@ -19,6 +21,7 @@ class RootzsuApp {
             this.initializeNavigation();
             this.initializeModals();
             this.initializeParticles();
+            this.initializeAuth(); // Инициализация аутентификации
             
             // Load initial data
             await this.loadServices();
@@ -337,9 +340,9 @@ class RootzsuApp {
                     break;
                 case 'admin':
                     if (this.isAdmin) {
-                        content = await this.getAdminPage();
+                        content = await this.getAdminDashboardPage();
                     } else {
-                        content = this.getAccessDeniedPage();
+                        content = this.getAdminLoginPage();
                     }
                     break;
                 default:
@@ -570,12 +573,7 @@ class RootzsuApp {
                         <h2 data-lang-key="login_required">Необходимо войти в систему</h2>
                         <p data-lang-key="login_description">Войдите в свой аккаунт для доступа к личному кабинету</p>
                         
-                        <div id="google-signin-container">
-                            <button class="google-btn" onclick="app.signInWithGoogle()">
-                                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" class="google-icon">
-                                <span data-lang-key="login_google">Войти через Google</span>
-                            </button>
-                        </div>
+                        <div id="google-signin-container" style="display: flex; justify-content: center; margin-top: 20px;"></div>
                     </div>
                 </div>
             `;
@@ -751,55 +749,68 @@ class RootzsuApp {
         `;
     }
     
-    async getAdminPage() {
-        try {
-            const response = await fetch('/api/admin/stats');
-            const stats = response.ok ? await response.json() : {};
-            
-            return `
-                <div class="fade-in">
-                    <h2><i class="fa-solid fa-shield-halved"></i> Админ-панель</h2>
-                    
-                    <div class="admin-grid">
-                        <div class="admin-card glass">
-                            <h3>Статистика</h3>
-                            <div class="stat-item">
-                                <div class="stat-value">${stats.total_users || 0}</div>
-                                <div class="stat-label">Всего пользователей</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-value">${stats.total_orders || 0}</div>
-                                <div class="stat-label">Всего заказов</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-value">$${stats.total_revenue || 0}</div>
-                                <div class="stat-label">Общий доход</div>
-                            </div>
+    getAdminLoginPage() {
+        return `
+            <div class="fade-in">
+                <div class="glass" style="max-width: 500px; margin: 40px auto; padding: 40px;">
+                    <h2 style="text-align: center;">Вход для администратора</h2>
+                    <form id="admin-login-form">
+                        <div class="form-group">
+                            <label for="admin-username">Имя пользователя</label>
+                            <input type="text" id="admin-username" required>
                         </div>
-                        
-                        <div class="admin-card glass">
-                            <h3>Управление</h3>
-                            <div style="display: flex; flex-direction: column; gap: 10px;">
-                                <button class="btn primary" onclick="app.loadAdminUsers()">
-                                    <i class="fa-solid fa-users"></i>
-                                    Пользователи
-                                </button>
-                                <button class="btn primary" onclick="app.loadAdminOrders()">
-                                    <i class="fa-solid fa-shopping-cart"></i>
-                                    Заказы
-                                </button>
-                                <button class="btn primary" onclick="app.loadAdminSupport()">
-                                    <i class="fa-solid fa-headset"></i>
-                                    Поддержка
-                                </button>
-                            </div>
+                        <div class="form-group">
+                            <label for="admin-password">Пароль</label>
+                            <input type="password" id="admin-password" required>
                         </div>
-                    </div>
+                        <button type="submit" class="btn primary" style="width: 100%;">Войти</button>
+                    </form>
                 </div>
-            `;
+            </div>
+        `;
+    }
+
+    async getAdminDashboardPage() {
+        return `
+            <div class="fade-in">
+                <h2><i class="fa-solid fa-shield-halved"></i> Админ-панель</h2>
+                <div class="profile-tabs">
+                     <button class="tab-btn active" data-tab="stats">Статистика</button>
+                     <button class="tab-btn" data-tab="users">Пользователи</button>
+                     <button class="tab-btn" data-tab="orders">Заказы</button>
+                </div>
+                <div class="tab-content" style="padding-top: 20px;">
+                    <div class="tab-pane active" id="stats-tab">Загрузка статистики...</div>
+                    <div class="tab-pane" id="users-tab"></div>
+                    <div class="tab-pane" id="orders-tab"></div>
+                </div>
+            </div>
+        `;
+    }
+
+    async handleAdminLogin(event) {
+        event.preventDefault();
+        const username = document.getElementById('admin-username').value;
+        const password = document.getElementById('admin-password').value;
+
+        try {
+            const res = await fetch('/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                this.isAdmin = true;
+                this.showToast('Вход администратора выполнен успешно', 'success');
+                this.updateAdminNav();
+                this.loadPage('admin');
+            } else {
+                throw new Error(data.message || 'Неверные учетные данные');
+            }
         } catch (error) {
-            console.error('Error loading admin page:', error);
-            return this.getErrorPage();
+            this.showToast(error.message, 'error');
         }
     }
     
@@ -889,6 +900,31 @@ class RootzsuApp {
         // Load cabinet data if user is logged in
         if (this.currentUser && this.currentPage === 'cabinet') {
             this.loadUserOrders();
+        } else if (!this.currentUser && this.currentPage === 'cabinet') {
+            this.renderGoogleButton();
+        }
+        
+        // Admin login form
+        const adminLoginForm = document.getElementById('admin-login-form');
+        if (adminLoginForm) {
+            adminLoginForm.addEventListener('submit', this.handleAdminLogin.bind(this));
+        }
+
+        // If on admin dashboard, load initial tab
+        if (this.isAdmin && this.currentPage === 'admin') {
+            this.loadAdminStats(); // Загружаем первую вкладку по умолчанию
+            document.querySelectorAll('.profile-tabs .tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tab = btn.dataset.tab;
+                    document.querySelectorAll('.profile-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+                    document.getElementById(`${tab}-tab`).classList.add('active');
+
+                    if (tab === 'stats') this.loadAdminStats();
+                });
+            });
         }
         
         // Update language
@@ -938,33 +974,84 @@ class RootzsuApp {
     }
     
     showReviews(serviceId) {
-        // Implementation for showing reviews modal
         this.showToast('Функция отзывов в разработке', 'info');
     }
     
-    /   try {
-            // This would integrate with Google Sign-In API
-            this.showToast('Google Sign-In в разработке', 'info');
-        } catch (error) {
-            console.error('Google Sign-In error:', error);
-            this.showToast('Ошибка входа через Google', 'error');
+    // Auth Functions
+    initializeAuth() {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            try {
+                this.currentUser = JSON.parse(storedUser);
+                this.isAdmin = this.currentUser.is_admin || false;
+                this.updateAdminNav();
+            } catch (e) {
+                console.error("Failed to parse user from localStorage", e);
+                localStorage.removeItem('user');
+            }
         }
-    }/ Google Sign In
-    async signInWithGoogle() {
-     
+
+        google.accounts.id.initialize({
+            client_id: this.googleClientId,
+            callback: this.handleGoogleCredentialResponse.bind(this)
+        });
+    }
+
+    async handleGoogleCredentialResponse(response) {
+        try {
+            const res = await fetch('/api/auth/google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: response.credential })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                this.currentUser = data.user;
+                this.isAdmin = data.is_admin || false;
+                localStorage.setItem('user', JSON.stringify(this.currentUser));
+                this.showToast('Вход выполнен успешно!', 'success');
+                this.updateAdminNav();
+                if (this.currentPage === 'cabinet') {
+                    this.loadPage('cabinet');
+                }
+            } else {
+                throw new Error(data.message || 'Ошибка аутентификации');
+            }
+        } catch (error) {
+            console.error('Google Sign-In Error:', error);
+            this.showToast(error.message, 'error');
+        }
+    }
     
+    renderGoogleButton() {
+        const container = document.getElementById('google-signin-container');
+        if (container) {
+            google.accounts.id.renderButton(container, {
+                theme: "outline",
+                size: "large",
+                text: "signin_with",
+                shape: "rectangular"
+            });
+        }
+    }
+
+    updateAdminNav() {
+        const adminLink = document.getElementById('admin-nav-link');
+        if (adminLink) {
+            adminLink.style.display = this.isAdmin ? 'flex' : 'none';
+        }
+    }
+
     signOut() {
         this.currentUser = null;
         this.isAdmin = false;
         localStorage.removeItem('user');
-        this.loadPage('home');
+        google.accounts.id.disableAutoSelect();
         this.showToast('Вы вышли из системы', 'success');
-        
-        // Hide admin nav
-        const adminNav = document.getElementById('admin-nav-link');
-        if (adminNav) {
-            adminNav.style.display = 'none';
-        }
+        this.updateAdminNav();
+        this.loadPage(this.currentPage); 
     }
     
     // Cabinet Functions
@@ -1199,6 +1286,48 @@ class RootzsuApp {
         container.appendChild(messageDiv);
         container.scrollTop = container.scrollHeight;
         return messageDiv;
+    }
+
+    async loadAdminStats() {
+        const container = document.getElementById('stats-tab');
+        if (!container) return;
+
+        try {
+            const response = await fetch('/api/admin/stats');
+            if (!response.ok) throw new Error('Failed to load stats');
+            
+            const stats = await response.json();
+            
+            container.innerHTML = `
+                <div class="status-grid">
+                    <div class="status-card glass">
+                        <div class="label">Всего пользователей</div>
+                        <div class="value">${stats.total_users}</div>
+                    </div>
+                    <div class="status-card glass">
+                        <div class="label">Всего заказов</div>
+                        <div class="value">${stats.total_orders}</div>
+                    </div>
+                    <div class="status-card glass">
+                        <div class="label">Общий доход</div>
+                        <div class="value">$${stats.total_revenue.toFixed(2)}</div>
+                    </div>
+                    <div class="status-card glass">
+                        <div class="label">Открытые тикеты</div>
+                        <div class="value">${stats.open_support_tickets}</div>
+                    </div>
+                </div>
+                <div class="admin-card glass" style="margin-top: 20px;">
+                    <h3>Популярные услуги</h3>
+                    <ul style="list-style: none; padding: 0;">
+                        ${stats.popular_services.map(s => `<li>${s.name} - ${s.order_count} заказов</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+
+        } catch (error) {
+            container.innerHTML = `<p>Ошибка загрузки статистики: ${error.message}</p>`;
+        }
     }
     
     // Settings
