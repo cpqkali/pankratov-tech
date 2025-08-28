@@ -977,25 +977,44 @@ class RootzsuApp {
         this.showToast('Функция отзывов в разработке', 'info');
     }
     
-    // Auth Functions
-    initializeAuth() {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
+   // Вставьте этот исправленный код на место старого
+initializeAuth() {
+    // Сначала проверяем, есть ли пользователь в локальном хранилище
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+        try {
+            this.currentUser = JSON.parse(storedUser);
+            this.isAdmin = this.currentUser.is_admin || false;
+            this.updateAdminNav();
+        } catch (e) {
+            console.error("Failed to parse user from localStorage", e);
+            localStorage.removeItem('user');
+        }
+    }
+
+    // Этот код безопасно ждет, пока библиотека Google полностью загрузится
+    const checkGoogle = setInterval(() => {
+        if (window.google && window.google.accounts) {
+            clearInterval(checkGoogle); // Останавливаем проверку, как только библиотека готова
+            console.log("Google GSI library is ready.");
+            
+            // Инициализируем библиотеку только после того, как она точно загрузилась
             try {
-                this.currentUser = JSON.parse(storedUser);
-                this.isAdmin = this.currentUser.is_admin || false;
-                this.updateAdminNav();
-            } catch (e) {
-                console.error("Failed to parse user from localStorage", e);
-                localStorage.removeItem('user');
+                google.accounts.id.initialize({
+                    client_id: this.googleClientId,
+                    callback: this.handleGoogleCredentialResponse.bind(this)
+                });
+                // Если пользователь не вошел и находится на странице кабинета, пробуем отрисовать кнопку
+                if (this.currentPage === 'cabinet' && !this.currentUser) {
+                    this.renderGoogleButton();
+                }
+            } catch(e) {
+                console.error("Google Initialize Error:", e);
+                this.showToast('Не удалось инициализировать вход через Google', 'error');
             }
         }
-
-        google.accounts.id.initialize({
-            client_id: this.googleClientId,
-            callback: this.handleGoogleCredentialResponse.bind(this)
-        });
-    }
+    }, 100); // Проверяем каждые 100 миллисекунд
+}
 
     async handleGoogleCredentialResponse(response) {
         try {
