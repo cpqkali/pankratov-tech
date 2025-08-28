@@ -6,149 +6,8 @@ class RootzsuApp {
         this.isAdmin = false;
         this.services = [];
         this.settings = this.loadSettings();
-        this.googleClientId = "957687109285-gs24ojtjhjkatpi7n0rrpb1c57tf95e2.apps.googleusercontent.com"
-
+        
         this.init();
-        // В файле script.js, внутри класса RootzsuApp
-    // В файле script.js, внутри класса RootzsuApp
-// ДОБАВЬТЕ ЭТИ МЕТОДЫ
-
-    getAdminLoginPage() {
-        return `
-            <div class="fade-in">
-                <div class="glass" style="max-width: 500px; margin: 40px auto; padding: 40px;">
-                    <h2 style="text-align: center;">Вход для администратора</h2>
-                    <form id="admin-login-form">
-                        <div class="form-group">
-                            <label for="admin-username">Имя пользователя</label>
-                            <input type="text" id="admin-username" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="admin-password">Пароль</label>
-                            <input type="password" id="admin-password" required>
-                        </div>
-                        <button type="submit" class="btn primary" style="width: 100%;">Войти</button>
-                    </form>
-                </div>
-            </div>
-        `;
-    }
-
-    async getAdminDashboardPage() {
-        // Эта функция может быть расширена для отображения реальных данных
-        return `
-            <div class="fade-in">
-                <h2><i class="fa-solid fa-shield-halved"></i> Админ-панель</h2>
-                <div class="profile-tabs">
-                     <button class="tab-btn active" data-tab="stats">Статистика</button>
-                     <button class="tab-btn" data-tab="users">Пользователи</button>
-                     <button class="tab-btn" data-tab="orders">Заказы</button>
-                </div>
-                <div class="tab-content" style="padding-top: 20px;">
-                    <div class="tab-pane active" id="stats-tab">Загрузка статистики...</div>
-                    <div class="tab-pane" id="users-tab"></div>
-                    <div class="tab-pane" id="orders-tab"></div>
-                </div>
-            </div>
-        `;
-    }
-
-    async handleAdminLogin(event) {
-        event.preventDefault();
-        const username = document.getElementById('admin-username').value;
-        const password = document.getElementById('admin-password').value;
-
-        try {
-            const res = await fetch('/api/admin/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-
-            const data = await res.json();
-            if (res.ok) {
-                this.isAdmin = true;
-                // Мы не сохраняем админа в localStorage, чтобы требовать вход каждый раз
-                this.showToast('Вход администратора выполнен успешно', 'success');
-                this.updateAdminNav();
-                this.loadPage('admin');
-            } else {
-                throw new Error(data.message || 'Неверные учетные данные');
-            }
-        } catch (error) {
-            this.showToast(error.message, 'error');
-        }
-    }
-    // ДОБАВЬТЕ ЭТОТ БЛОК МЕТОДОВ
-    initializeAuth() {
-        // Проверяем, есть ли пользователь в localStorage при запуске
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            try {
-                this.currentUser = JSON.parse(storedUser);
-                this.isAdmin = this.currentUser.is_admin || false;
-                this.updateAdminNav();
-            } catch (e) {
-                console.error("Failed to parse user from localStorage", e);
-                localStorage.removeItem('user');
-            }
-        }
-    
-        // Инициализация клиента Google
-        google.accounts.id.initialize({
-            client_id: this.googleClientId,
-            callback: this.handleGoogleCredentialResponse.bind(this)
-        });
-    }
-
-    async handleGoogleCredentialResponse(response) {
-        try {
-            const res = await fetch('/api/auth/google', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: response.credential })
-            });
-
-            const data = await res.json();
-
-            if (res.ok) {
-                this.currentUser = data.user;
-                this.isAdmin = data.is_admin || false;
-                localStorage.setItem('user', JSON.stringify(this.currentUser));
-                this.showToast('Вход выполнен успешно!', 'success');
-                this.updateAdminNav();
-                // Если мы на странице кабинета, перезагружаем ее, чтобы отобразить данные
-                if (this.currentPage === 'cabinet') {
-                    this.loadPage('cabinet');
-                }
-            } else {
-                throw new Error(data.message || 'Ошибка аутентификации');
-            }
-        } catch (error) {
-            console.error('Google Sign-In Error:', error);
-            this.showToast(error.message, 'error');
-        }
-    }
-    
-    renderGoogleButton() {
-        // Эта функция будет рендерить кнопку там, где это необходимо
-        const container = document.getElementById('google-signin-container');
-        if (container) {
-            google.accounts.id.renderButton(container, {
-                theme: "outline",
-                size: "large",
-                text: "signin_with",
-                shape: "rectangular"
-            });
-        }
-    }
-
-    updateAdminNav() {
-        const adminLink = document.getElementById('admin-nav-link');
-        if (adminLink) {
-            adminLink.style.display = this.isAdmin ? 'flex' : 'none';
-        }
-    }
     }
     
     async init() {
@@ -160,7 +19,7 @@ class RootzsuApp {
             this.initializeNavigation();
             this.initializeModals();
             this.initializeParticles();
-            this.initializeAuth()
+            
             // Load initial data
             await this.loadServices();
             
@@ -482,16 +341,6 @@ class RootzsuApp {
                     } else {
                         content = this.getAccessDeniedPage();
                     }
-                    // ...
-            case 'admin':
-                // ЗАМЕНИТЕ СУЩЕСТВУЮЩИЙ case 'admin' НА ЭТОТ
-                if (this.isAdmin) {
-                    content = await this.getAdminDashboardPage();
-                } else {
-                    content = this.getAdminLoginPage();
-                }
-                
-            // ...
                     break;
                 default:
                     content = this.getNotFoundPage();
@@ -1040,12 +889,6 @@ class RootzsuApp {
         // Load cabinet data if user is logged in
         if (this.currentUser && this.currentPage === 'cabinet') {
             this.loadUserOrders();
-            if (this.currentUser && this.currentPage === 'cabinet') {
-            this.loadUserOrders();
-        } else if (!this.currentUser && this.currentPage === 'cabinet') {
-            // Если пользователь не вошел, рендерим кнопку Google
-            this.renderGoogleButton();
-        }
         }
         
         // Update language
@@ -1099,32 +942,24 @@ class RootzsuApp {
         this.showToast('Функция отзывов в разработке', 'info');
     }
     
-        try {
+    /   try {
             // This would integrate with Google Sign-In API
-             this.showToast('Google Sign-In в разработке', 'info');
-        }  
-        catch (error) {
+            this.showToast('Google Sign-In в разработке', 'info');
+        } catch (error) {
             console.error('Google Sign-In error:', error);
             this.showToast('Ошибка входа через Google', 'error');
         }
-    }/* Google Sign In*/
+    }/ Google Sign In
     async signInWithGoogle() {
      
     
     signOut() {
-       // В файле script.js
-// ЗАМЕНИТЕ ЭТОТ МЕТОД
-
-    signOut() {
         this.currentUser = null;
         this.isAdmin = false;
         localStorage.removeItem('user');
-        google.accounts.id.disableAutoSelect(); // Отключаем авто-вход Google
+        this.loadPage('home');
         this.showToast('Вы вышли из системы', 'success');
-        this.updateAdminNav();
-        // Перезагружаем текущую страницу, чтобы UI обновился
-        this.loadPage(this.currentPage); 
-    }
+        
         // Hide admin nav
         const adminNav = document.getElementById('admin-nav-link');
         if (adminNav) {
@@ -1440,116 +1275,3 @@ function showToast(message, type = 'info') {
 function t(key) {
     return window.t ? window.t(key) : key;
 }
-// В файле script.js, внутри класса RootzsuApp
-// ДОБАВЬТЕ ЭТИ МЕТОДЫ
-
-    getAdminLoginPage() {
-        return `
-            <div class="fade-in">
-                <div class="glass" style="max-width: 500px; margin: 40px auto; padding: 40px;">
-                    <h2 style="text-align: center;">Вход для администратора</h2>
-                    <form id="admin-login-form">
-                        <div class="form-group">
-                            <label for="admin-username">Имя пользователя</label>
-                            <input type="text" id="admin-username" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="admin-password">Пароль</label>
-                            <input type="password" id="admin-password" required>
-                        </div>
-                        <button type="submit" class="btn primary" style="width: 100%;">Войти</button>
-                    </form>
-                </div>
-            </div>
-        `;
-    }
-
-    async getAdminDashboardPage() {
-        // Эта функция может быть расширена для отображения реальных данных
-        return `
-            <div class="fade-in">
-                <h2><i class="fa-solid fa-shield-halved"></i> Админ-панель</h2>
-                <div class="profile-tabs">
-                     <button class="tab-btn active" data-tab="stats">Статистика</button>
-                     <button class="tab-btn" data-tab="users">Пользователи</button>
-                     <button class="tab-btn" data-tab="orders">Заказы</button>
-                </div>
-                <div class="tab-content" style="padding-top: 20px;">
-                    <div class="tab-pane active" id="stats-tab">Загрузка статистики...</div>
-                    <div class="tab-pane" id="users-tab"></div>
-                    <div class="tab-pane" id="orders-tab"></div>
-                </div>
-            </div>
-        `;
-    }
-
-    async handleAdminLogin(event) {
-        event.preventDefault();
-        const username = document.getElementById('admin-username').value;
-        const password = document.getElementById('admin-password').value;
-
-        try {
-            const res = await fetch('/api/admin/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-
-            const data = await res.json();
-            if (res.ok) {
-                this.isAdmin = true;
-                // Мы не сохраняем админа в localStorage, чтобы требовать вход каждый раз
-                this.showToast('Вход администратора выполнен успешно', 'success');
-                this.updateAdminNav();
-                this.loadPage('admin');
-            } else {
-                throw new Error(data.message || 'Неверные учетные данные');
-            }
-        } catch (error) {
-            this.showToast(error.message, 'error');
-        }
-    }
-    // В файле script.js, внутри класса RootzsuApp
-// ДОБАВЬТЕ ЭТОТ МЕТОД
-
-    async loadAdminStats() {
-        const container = document.getElementById('stats-tab');
-        if (!container) return;
-
-        try {
-            const response = await fetch('/api/admin/stats');
-            if (!response.ok) throw new Error('Failed to load stats');
-            
-            const stats = await response.json();
-            
-            container.innerHTML = `
-                <div class="status-grid">
-                    <div class="status-card glass">
-                        <div class="label">Всего пользователей</div>
-                        <div class="value">${stats.total_users}</div>
-                    </div>
-                    <div class="status-card glass">
-                        <div class="label">Всего заказов</div>
-                        <div class="value">${stats.total_orders}</div>
-                    </div>
-                    <div class="status-card glass">
-                        <div class="label">Общий доход</div>
-                        <div class="value">$${stats.total_revenue.toFixed(2)}</div>
-                    </div>
-                    <div class="status-card glass">
-                        <div class="label">Открытые тикеты</div>
-                        <div class="value">${stats.open_support_tickets}</div>
-                    </div>
-                </div>
-                <div class="admin-card glass" style="margin-top: 20px;">
-                    <h3>Популярные услуги</h3>
-                    <ul style="list-style: none; padding: 0;">
-                        ${stats.popular_services.map(s => `<li>${s.name} - ${s.order_count} заказов</li>`).join('')}
-                    </ul>
-                </div>
-            `;
-
-        } catch (error) {
-            container.innerHTML = `<p>Ошибка загрузки статистики: ${error.message}</p>`;
-        }
-    }
