@@ -1,12 +1,13 @@
-// Payment System
+// Enhanced Payment System with TG Stars and Ukraine Card Support
 class PaymentSystem {
     constructor() {
         this.currentOrder = null;
         this.paymentMethods = {
-            card: { name: 'Банковская карта', icon: 'fa-credit-card' },
-            crypto: { name: 'Криптовалюта', icon: 'fa-bitcoin' },
-            coins: { name: 'Монеты сайта', icon: 'fa-coins' }
+            card_ukraine: { name: 'Перевод на карту (Украина)', icon: 'fa-credit-card' },
+            crypto: { name: 'Криптовалюта (TON)', icon: 'fa-coins' },
+            stars: { name: 'Telegram Stars', icon: 'fa-star' }
         };
+        this.ukraineCard = '4149 6090 1876 9549'; // PrivatBank card
     }
     
     async processPayment(orderData) {
@@ -47,9 +48,9 @@ class PaymentSystem {
                             <span>UAH:</span>
                             <span class="price">₴${this.currentOrder.priceUah}</span>
                         </div>
-                        <div class="price-row coins-price">
-                            <span><i class="fa-solid fa-coins"></i> Монеты:</span>
-                            <span class="price">${this.currentOrder.priceCoins}</span>
+                        <div class="price-row stars-price">
+                            <span><i class="fa-solid fa-star"></i> Telegram Stars:</span>
+                            <span class="price">${this.currentOrder.priceStars}</span>
                         </div>
                     </div>
                 </div>
@@ -112,26 +113,30 @@ class PaymentSystem {
         let formHTML = '';
         
         switch (method) {
-            case 'card':
+            case 'card_ukraine':
                 formHTML = `
-                    <div class="card-form">
-                        <div class="form-group">
-                            <label>Номер карты</label>
-                            <input type="text" id="card-number" placeholder="1234 5678 9012 3456" maxlength="19">
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Срок действия</label>
-                                <input type="text" id="card-expiry" placeholder="MM/YY" maxlength="5">
+                    <div class="card-ukraine-form">
+                        <div class="card-info">
+                            <h4>Реквизиты для перевода:</h4>
+                            <div class="card-details">
+                                <div class="card-number">
+                                    <label>Номер карты ПриватБанк:</label>
+                                    <div class="copy-field">
+                                        <input type="text" value="${this.ukraineCard}" readonly>
+                                        <button class="btn secondary copy-btn" onclick="this.previousElementSibling.select(); document.execCommand('copy'); this.textContent='Скопировано!';">
+                                            <i class="fa-solid fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="amount-info">
+                                    <p><strong>Сумма к переводу:</strong> ${this.currentOrder.priceUah} UAH</p>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>CVV</label>
-                                <input type="text" id="card-cvv" placeholder="123" maxlength="3">
-                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>Имя держателя</label>
-                            <input type="text" id="card-holder" placeholder="IVAN PETROV">
+                        <div class="upload-section">
+                            <h4>Загрузите скриншот перевода:</h4>
+                            <input type="file" id="payment-screenshot" accept="image/*" required>
+                            <p class="upload-note">После перевода загрузите скриншот для подтверждения оплаты</p>
                         </div>
                     </div>
                 `;
@@ -140,49 +145,51 @@ class PaymentSystem {
             case 'crypto':
                 formHTML = `
                     <div class="crypto-form">
-                        <div class="crypto-options">
-                            <button class="crypto-btn" data-crypto="btc">
-                                <i class="fa-brands fa-bitcoin"></i>
-                                Bitcoin
-                            </button>
-                            <button class="crypto-btn" data-crypto="eth">
-                                <i class="fa-brands fa-ethereum"></i>
-                                Ethereum
-                            </button>
-                            <button class="crypto-btn" data-crypto="usdt">
-                                <i class="fa-solid fa-dollar-sign"></i>
-                                USDT
-                            </button>
-                        </div>
-                        <div class="crypto-address" id="crypto-address" style="display: none;">
-                            <p>Переведите средства на адрес:</p>
-                            <div class="address-container">
-                                <input type="text" id="wallet-address" readonly>
-                                <button class="btn secondary copy-btn" onclick="this.previousElementSibling.select(); document.execCommand('copy');">
-                                    <i class="fa-solid fa-copy"></i>
-                                </button>
+                        <div class="crypto-info">
+                            <h4>Оплата TON:</h4>
+                            <div class="ton-address">
+                                <label>TON адрес:</label>
+                                <div class="copy-field">
+                                    <input type="text" value="UQCKtm0RoDtPCyObq18G-FKehsDPaVIiVX5Z8q78P_XfmTUh" readonly>
+                                    <button class="btn secondary copy-btn" onclick="this.previousElementSibling.select(); document.execCommand('copy'); this.textContent='Скопировано!';">
+                                        <i class="fa-solid fa-copy"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <p class="crypto-note">После перевода прикрепите скриншот транзакции</p>
-                            <input type="file" id="crypto-proof" accept="image/*">
+                            <div class="amount-info">
+                                <p><strong>Сумма к переводу:</strong> ${this.currentOrder.priceUsd} USD в TON</p>
+                            </div>
+                        </div>
+                        <div class="upload-section">
+                            <h4>Загрузите скриншот транзакции:</h4>
+                            <input type="file" id="crypto-screenshot" accept="image/*" required>
+                            <p class="upload-note">После перевода загрузите скриншот транзакции</p>
                         </div>
                     </div>
                 `;
                 break;
                 
-            case 'coins':
+            case 'stars':
                 formHTML = `
-                    <div class="coins-form">
-                        <div class="coins-balance">
-                            <i class="fa-solid fa-coins"></i>
-                            <span>Ваш баланс: <strong id="user-coins">0</strong> монет</span>
+                    <div class="stars-form">
+                        <div class="stars-info">
+                            <h4>Оплата Telegram Stars:</h4>
+                            <div class="stars-amount">
+                                <p><strong>Стоимость:</strong> ${this.currentOrder.priceStars} ⭐</p>
+                            </div>
+                            <div class="stars-instructions">
+                                <p>Для оплаты Telegram Stars:</p>
+                                <ol>
+                                    <li>Перейдите в Telegram бот @rootzsu_bot</li>
+                                    <li>Выберите услугу и оплатите звездами</li>
+                                    <li>Загрузите скриншот подтверждения</li>
+                                </ol>
+                            </div>
                         </div>
-                        <div class="coins-required">
-                            <span>Требуется: <strong>${this.currentOrder.priceCoins}</strong> монет</span>
-                        </div>
-                        <div class="coins-actions">
-                            <button class="btn secondary" onclick="window.location.href='#cabinet'">
-                                Пополнить баланс
-                            </button>
+                        <div class="upload-section">
+                            <h4>Загрузите скриншот оплаты:</h4>
+                            <input type="file" id="stars-screenshot" accept="image/*" required>
+                            <p class="upload-note">Загрузите скриншот подтверждения оплаты звездами</p>
                         </div>
                     </div>
                 `;
@@ -192,72 +199,6 @@ class PaymentSystem {
         formContainer.innerHTML = formHTML;
         formContainer.style.display = 'block';
         payBtn.style.display = 'block';
-        
-        // Bind additional events
-        if (method === 'card') {
-            this.bindCardFormEvents(modal);
-        } else if (method === 'crypto') {
-            this.bindCryptoFormEvents(modal);
-        } else if (method === 'coins') {
-            this.loadUserCoins(modal);
-        }
-    }
-    
-    bindCardFormEvents(modal) {
-        const cardNumber = modal.querySelector('#card-number');
-        const cardExpiry = modal.querySelector('#card-expiry');
-        
-        // Format card number
-        cardNumber.oninput = (e) => {
-            let value = e.target.value.replace(/\s/g, '');
-            let formattedValue = value.replace(/(.{4})/g, '$1 ').trim();
-            e.target.value = formattedValue;
-        };
-        
-        // Format expiry date
-        cardExpiry.oninput = (e) => {
-            let value = e.target.value.replace(/\D/g, '');
-            if (value.length >= 2) {
-                value = value.substring(0, 2) + '/' + value.substring(2, 4);
-            }
-            e.target.value = value;
-        };
-    }
-    
-    bindCryptoFormEvents(modal) {
-        const cryptoButtons = modal.querySelectorAll('.crypto-btn');
-        const addressContainer = modal.querySelector('#crypto-address');
-        const walletAddress = modal.querySelector('#wallet-address');
-        
-        const addresses = {
-            btc: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
-            eth: '0x742d35Cc6634C0532925a3b8D4C9db4C4C4C4C4C',
-            usdt: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE'
-        };
-        
-        cryptoButtons.forEach(btn => {
-            btn.onclick = () => {
-                cryptoButtons.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                
-                const crypto = btn.dataset.crypto;
-                walletAddress.value = addresses[crypto];
-                addressContainer.style.display = 'block';
-            };
-        });
-    }
-    
-    async loadUserCoins(modal) {
-        try {
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
-            if (user.user_id) {
-                const response = await fetch(`/api/user/${user.user_id}/coins`);
-                const data = await response.json();
-                modal.querySelector('#user-coins').textContent = data.coins || 0;
-            }
-        } catch (error) {
-            console.error('Error loading user coins:', error);
-        }
     }
     
     async submitPayment(modal) {
@@ -275,14 +216,20 @@ class PaymentSystem {
         }
         
         try {
+            const formData = new FormData();
+            formData.append('user_id', this.currentOrder.userId);
+            formData.append('service_id', this.currentOrder.serviceId);
+            formData.append('payment_method', method);
+            formData.append('order_details', JSON.stringify(paymentData));
+            
+            // Add screenshot if provided
+            if (paymentData.screenshot) {
+                formData.append('payment_screenshot', paymentData.screenshot);
+            }
+            
             const response = await fetch('/api/orders', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ...this.currentOrder,
-                    payment_method: method,
-                    payment_data: paymentData
-                })
+                body: formData
             });
             
             const result = await response.json();
@@ -290,7 +237,7 @@ class PaymentSystem {
             if (response.ok) {
                 modal.remove();
                 this.showReceipt(result);
-                this.showToast('Заказ успешно создан!', 'success');
+                this.showToast('Заказ успешно создан! Ожидайте подтверждения оплаты.', 'success');
             } else {
                 this.showToast(result.error || 'Ошибка при создании заказа', 'error');
             }
@@ -304,22 +251,24 @@ class PaymentSystem {
         const data = { method };
         
         switch (method) {
-            case 'card':
-                data.cardNumber = modal.querySelector('#card-number').value;
-                data.cardExpiry = modal.querySelector('#card-expiry').value;
-                data.cardCvv = modal.querySelector('#card-cvv').value;
-                data.cardHolder = modal.querySelector('#card-holder').value;
+            case 'card_ukraine':
+                data.cardNumber = this.ukraineCard;
+                data.amount = this.currentOrder.priceUah;
+                data.currency = 'UAH';
+                data.screenshot = modal.querySelector('#payment-screenshot').files[0];
                 break;
                 
             case 'crypto':
-                const activeCrypto = modal.querySelector('.crypto-btn.active');
-                data.cryptoType = activeCrypto ? activeCrypto.dataset.crypto : null;
-                data.walletAddress = modal.querySelector('#wallet-address').value;
-                data.proofFile = modal.querySelector('#crypto-proof').files[0];
+                data.cryptoType = 'TON';
+                data.address = 'UQCKtm0RoDtPCyObq18G-FKehsDPaVIiVX5Z8q78P_XfmTUh';
+                data.amount = this.currentOrder.priceUsd;
+                data.currency = 'USD';
+                data.screenshot = modal.querySelector('#crypto-screenshot').files[0];
                 break;
                 
-            case 'coins':
-                data.coinsUsed = this.currentOrder.priceCoins;
+            case 'stars':
+                data.starsAmount = this.currentOrder.priceStars;
+                data.screenshot = modal.querySelector('#stars-screenshot').files[0];
                 break;
         }
         
@@ -327,20 +276,22 @@ class PaymentSystem {
     }
     
     validatePaymentData(data, method) {
-        switch (method) {
-            case 'card':
-                if (!data.cardNumber || !data.cardExpiry || !data.cardCvv || !data.cardHolder) {
-                    this.showToast('Заполните все поля карты', 'error');
-                    return false;
-                }
-                break;
-                
-            case 'crypto':
-                if (!data.cryptoType) {
-                    this.showToast('Выберите криптовалюту', 'error');
-                    return false;
-                }
-                break;
+        if (!data.screenshot) {
+            this.showToast('Загрузите скриншот подтверждения оплаты', 'error');
+            return false;
+        }
+        
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+        if (!allowedTypes.includes(data.screenshot.type)) {
+            this.showToast('Загрузите изображение в формате JPG, PNG или GIF', 'error');
+            return false;
+        }
+        
+        // Validate file size (max 5MB)
+        if (data.screenshot.size > 5 * 1024 * 1024) {
+            this.showToast('Размер файла не должен превышать 5MB', 'error');
+            return false;
         }
         
         return true;
@@ -363,7 +314,7 @@ class PaymentSystem {
     }
 }
 
-// Receipt System
+// Enhanced Receipt System
 class Receipt {
     constructor(orderData) {
         this.orderData = orderData;
@@ -417,7 +368,8 @@ class Receipt {
                 <div class="company-info">
                     <h3>ROOTZSU SERVICES</h3>
                     <p>Профессиональные IT-услуги</p>
-                    <p>Email: support@rootzsu.com</p>
+                    <p>Telegram: @rootzsu</p>
+                    <p>GitHub: github.com/cpqkali</p>
                 </div>
                 <div class="receipt-info">
                     <p><strong>Чек №:</strong> ${this.receiptId}</p>
@@ -464,7 +416,7 @@ class Receipt {
             
             <div class="receipt-footer">
                 <p>Способ оплаты: ${this.getPaymentMethodName()}</p>
-                <p>Статус: Оплачено</p>
+                <p>Статус: ${t('payment_pending')}</p>
                 <p class="thank-you">Спасибо за ваш заказ!</p>
             </div>
         `;
@@ -473,19 +425,18 @@ class Receipt {
     formatPrice() {
         const method = this.orderData.payment_method;
         switch (method) {
-            case 'usd': return `$${this.orderData.priceUsd}`;
-            case 'eur': return `€${this.orderData.priceEur}`;
-            case 'uah': return `₴${this.orderData.priceUah}`;
-            case 'coins': return `${this.orderData.priceCoins} монет`;
+            case 'card_ukraine': return `₴${this.orderData.priceUah}`;
+            case 'crypto': return `$${this.orderData.priceUsd}`;
+            case 'stars': return `${this.orderData.priceStars} ⭐`;
             default: return `$${this.orderData.priceUsd}`;
         }
     }
     
     getPaymentMethodName() {
         const methods = {
-            card: 'Банковская карта',
-            crypto: 'Криптовалюта',
-            coins: 'Монеты сайта'
+            card_ukraine: 'Перевод на карту (Украина)',
+            crypto: 'Криптовалюта (TON)',
+            stars: 'Telegram Stars'
         };
         return methods[this.orderData.payment_method] || 'Неизвестно';
     }
@@ -523,7 +474,8 @@ class Receipt {
         const content = `
 ROOTZSU SERVICES
 Профессиональные IT-услуги
-Email: support@rootzsu.com
+Telegram: @rootzsu
+GitHub: github.com/cpqkali
 
 ========================================
 ЧЕК № ${this.receiptId}
@@ -544,7 +496,7 @@ Email: support@rootzsu.com
 ----------------------------------------
 
 Способ оплаты: ${this.getPaymentMethodName()}
-Статус: Оплачено
+Статус: ${t('payment_pending')}
 
 Спасибо за ваш заказ!
 
