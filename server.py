@@ -1066,7 +1066,7 @@ def unban_user(user_id):
     
     return jsonify({"message": "User unbanned successfully"})
 
-# Admin Orders Management
+# Admin Orders Management (Enhanced)
 @app.route('/api/admin/orders', methods=['GET'])
 def get_admin_orders():
     status = request.args.get('status', 'all')
@@ -1076,7 +1076,7 @@ def get_admin_orders():
     db = get_db()
     
     query = """
-        SELECT o.*, u.first_name, u.last_name, u.email, s.name as service_name
+        SELECT o.*, u.first_name, u.last_name, u.email, s.name as service_name, s.description as service_description
         FROM orders o
         JOIN users u ON o.user_id = u.user_id
         JOIN services s ON o.service_id = s.service_id
@@ -1093,6 +1093,36 @@ def get_admin_orders():
     orders = db.execute(query, params).fetchall()
     
     return jsonify([dict(o) for o in orders])
+
+# Approve/Reject Payment
+@app.route('/api/admin/orders/<int:order_id>/approve', methods=['POST'])
+def approve_payment(order_id):
+    db = get_db()
+    
+    # Update order status to completed
+    db.execute("""
+        UPDATE orders SET status = 'completed', completion_date = CURRENT_TIMESTAMP
+        WHERE order_id = ?
+    """, (order_id,))
+    db.commit()
+    
+    return jsonify({"message": "Payment approved and order completed"})
+
+@app.route('/api/admin/orders/<int:order_id>/reject', methods=['POST'])
+def reject_payment(order_id):
+    data = request.get_json()
+    reason = data.get('reason', 'Payment rejected by admin')
+    
+    db = get_db()
+    
+    # Update order status to cancelled
+    db.execute("""
+        UPDATE orders SET status = 'cancelled', admin_notes = ?
+        WHERE order_id = ?
+    """, (reason, order_id))
+    db.commit()
+    
+    return jsonify({"message": "Payment rejected"})
 
 # Update Order Status
 @app.route('/api/admin/orders/<int:order_id>/status', methods=['PUT'])
