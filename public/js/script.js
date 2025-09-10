@@ -56,6 +56,159 @@ class RootzsuApp {
         }
     }
 
+    initializeGoogleAuth() {
+        // Initialize Google Sign-In
+        if (typeof google !== 'undefined' && google.accounts) {
+            google.accounts.id.initialize({
+                client_id: "957687109285-gs24ojtjhjkatpi7n0rrpb1c57tf95e2.apps.googleusercontent.com",
+                callback: this.handleGoogleSignIn.bind(this)
+            });
+        }
+    }
+
+    async handleGoogleSignIn(response) {
+        try {
+            const result = await fetch('/api/auth/google', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ token: response.credential })
+            });
+
+            const data = await result.json();
+            
+            if (result.ok) {
+                this.currentUser = data.user;
+                localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+                this.updateUserInterface();
+                this.showToast(t('login_success') || 'Вход выполнен успешно!', 'success');
+                
+                // Check if user is admin
+                if (data.is_admin || this.currentUser.email === 'aishchnko12@gmail.com') {
+                    document.getElementById('admin-nav-link').style.display = 'block';
+                }
+            } else {
+                this.showToast(data.message || 'Ошибка входа', 'error');
+            }
+        } catch (error) {
+            console.error('Google Sign-In error:', error);
+            this.showToast('Ошибка при входе через Google', 'error');
+        }
+    }
+
+    async checkUserSession() {
+        const userData = localStorage.getItem('currentUser');
+        if (userData) {
+            try {
+                this.currentUser = JSON.parse(userData);
+                this.updateUserInterface();
+                
+                // Check if user is admin
+                if (this.currentUser.email === 'aishchnko12@gmail.com') {
+                    document.getElementById('admin-nav-link').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error parsing user data:', error);
+                localStorage.removeItem('currentUser');
+            }
+        }
+    }
+
+    updateUserInterface() {
+        // Update cabinet page with user info
+        if (this.currentUser) {
+            const cabinetContent = document.querySelector('#cabinet .page-content');
+            if (cabinetContent) {
+                cabinetContent.innerHTML = `
+                    <div class="user-profile">
+                        <div class="user-avatar">
+                            <img src="${this.currentUser.avatar_url || 'https://via.placeholder.com/100'}" alt="Avatar">
+                        </div>
+                        <div class="user-info">
+                            <h2>${this.currentUser.first_name} ${this.currentUser.last_name || ''}</h2>
+                            <p class="user-email">${this.currentUser.email}</p>
+                            <div class="user-stats">
+                                <div class="stat">
+                                    <span class="stat-value">${this.currentUser.coins || 0}</span>
+                                    <span class="stat-label">Монеты</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value">0</span>
+                                    <span class="stat-label">Заказы</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn primary" onclick="app.loadUserOrders()">
+                            <i class="fa-solid fa-shopping-cart"></i>
+                            Мои заказы
+                        </button>
+                        <button class="btn secondary" onclick="app.logout()">
+                            <i class="fa-solid fa-sign-out-alt"></i>
+                            Выйти
+                        </button>
+                    </div>
+                `;
+            }
+        }
+    }
+
+    logout() {
+        this.currentUser = null;
+        localStorage.removeItem('currentUser');
+        document.getElementById('admin-nav-link').style.display = 'none';
+        this.loadPage('cabinet');
+        this.showToast('Вы вышли из системы', 'info');
+    }
+
+    async loadUserOrders() {
+        if (!this.currentUser) return;
+        
+        try {
+            const response = await fetch(`/api/orders/user/${this.currentUser.user_id}`);
+            if (response.ok) {
+                const orders = await response.json();
+                this.showUserOrders(orders);
+            }
+        } catch (error) {
+            console.error('Error loading user orders:', error);
+            this.showToast('Ошибка загрузки заказов', 'error');
+        }
+    }
+
+    showUserOrders(orders) {
+        const modal = document.createElement('div');
+        modal.className = 'modal-container';
+        modal.innerHTML = `
+            <div class="modal-content glass">
+                <button class="modal-close-btn">&times;</button>
+                <h2><i class="fa-solid fa-shopping-cart"></i> Мои заказы</h2>
+                <div class="orders-list">
+                    ${orders.length > 0 ? orders.map(order => `
+                        <div class="order-item">
+                            <div class="order-header">
+                                <h3>Заказ #${order.order_id}</h3>
+                                <span class="order-status status-${order.status}">${order.status}</span>
+                            </div>
+                            <p><strong>Услуга:</strong> ${order.service_name}</p>
+                            <p><strong>Дата:</strong> ${new Date(order.creation_date).toLocaleDateString()}</p>
+                            <p><strong>Сумма:</strong> $${order.price_paid}</p>
+                        </div>
+                    `).join('') : '<p>У вас пока нет заказов</p>'}
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        modal.classList.add('show');
+        
+        modal.querySelector('.modal-close-btn').onclick = () => {
+            modal.remove();
+        };
+    }
+
     bindEvents() {
         // Navigation
         document.querySelectorAll('.nav-link').forEach(link => {
@@ -167,6 +320,15 @@ class RootzsuApp {
             this.showToast('Ошибка входа через Google', 'error');
         }
     }
+                case 'admin':
+                    if (this.currentUser && this.currentUser.email === 'aishchnko12@gmail.com') {
+                        window.location.href = '/pages/admin.html';
+                        return;
+                    } else {
+                        this.showToast('Доступ запрещен', 'error');
+                        this.loadPage('home');
+                        return;
+                    }
 
     logout() {
         this.currentUser = null;
@@ -321,20 +483,82 @@ class RootzsuApp {
                 <h2 data-lang-key="services_title">Наши услуги</h2>
                 
                 <div class="service-categories">
+            
+            <div class="programs-preview-section">
+                <h2 class="section-title">Наши программы</h2>
+                <p class="section-subtitle">Полезные инструменты и боты для повседневного использования</p>
+                <div class="programs-preview-grid">
+                    <div class="program-preview-card" onclick="window.open('/pages/programs.html', '_blank')">
+                        <div class="program-icon">🖥️</div>
+                        <h3>ПК программы</h3>
+                        <p>Оптимизация, драйверы, системные утилиты</p>
+                    </div>
+                    <div class="program-preview-card" onclick="window.open('/pages/programs.html', '_blank')">
+                        <div class="program-icon">🛠️</div>
+                        <h3>Полезные инструменты</h3>
+                        <p>Конвертеры, генераторы, утилиты</p>
+                    </div>
+                    <div class="program-preview-card" onclick="window.open('/pages/programs.html', '_blank')">
+                        <div class="program-icon">🤖</div>
+                        <h3>Telegram боты</h3>
+                        <p>Автоматизация, файлы, сервисы</p>
+                    </div>
+                </div>
+                <div class="programs-action">
+                    <button class="btn primary" onclick="window.open('/pages/programs.html', '_blank')">
+                        <i class="fa-solid fa-external-link-alt"></i>
+                        Посмотреть все программы
+                    </button>
+                </div>
+            </div>
                     <div class="category-buttons">
                         <button class="category-btn active" data-category="all">Все услуги</button>
                         <button class="category-btn" data-category="basic" data-lang-key="service_basic">Базовые</button>
                         <button class="category-btn" data-category="advanced" data-lang-key="service_advanced">Продвинутые</button>
-                    </div>
-                </div>
-
-                <div class="services-container">
-                    <div class="service-category" data-category="basic">
-                        <h3 data-lang-key="service_basic">Базовые услуги</h3>
-                        <div class="grid">
-                            ${basicServices.map(service => this.getServiceCardHTML(service)).join('')}
+        if (!this.currentUser) {
+            return `
+                <div class="cabinet-login">
+                    <div class="login-card glass">
+                        <h2><i class="fa-solid fa-user-astronaut"></i> <span data-lang-key="cabinet_title">Личный кабинет</span></h2>
+                        <p data-lang-key="login_description">Войдите в свой аккаунт для доступа к личному кабинету</p>
+                        <div class="login-options">
+                            <div id="google-signin-button"></div>
+                        </div>
+                        <div class="login-benefits">
+                            <h3>Преимущества регистрации:</h3>
+                            <ul>
+                                <li><i class="fa-solid fa-check"></i> Отслеживание заказов</li>
+                                <li><i class="fa-solid fa-check"></i> История покупок</li>
+                                <li><i class="fa-solid fa-check"></i> Персональные скидки</li>
+                                <li><i class="fa-solid fa-check"></i> Приоритетная поддержка</li>
+                            </ul>
                         </div>
                     </div>
+                </div>
+            `;
+        }
+        
+                    </div>
+            <div class="user-cabinet">
+                <div class="cabinet-header">
+                    <div class="user-profile">
+                        <div class="user-avatar">
+                            <img src="${this.currentUser.avatar_url || 'https://via.placeholder.com/100'}" alt="Avatar">
+                        </div>
+                        <div class="user-info">
+                            <h2>${this.currentUser.first_name} ${this.currentUser.last_name || ''}</h2>
+                            <p class="user-email">${this.currentUser.email}</p>
+                            <div class="user-stats">
+                                <div class="stat">
+                                    <span class="stat-value">${this.currentUser.coins || 0}</span>
+                                    <span class="stat-label">Монеты</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value">0</span>
+                                    <span class="stat-label">Заказы</span>
+                                </div>
+                            </div>
+                        </div>
 
                     <div class="service-category" data-category="advanced">
                         <h3 data-lang-key="service_advanced">Продвинутые услуги</h3>
@@ -564,25 +788,27 @@ class RootzsuApp {
                         </div>
                         <h3>Главный разработчик</h3>
                         <p>Специалист по мобильным технологиям и системному администрированию</p>
-                        <div class="team-skills">
-                            <span class="skill-tag">Android</span>
-                            <span class="skill-tag">Root</span>
-                            <span class="skill-tag">Custom ROM</span>
-                            <span class="skill-tag">Linux</span>
-                        </div>
-                    </div>
-                    <div class="glass team-card">
+                </div>
+                <div class="cabinet-content">
+                    <div class="cabinet-actions">
+                        <button class="btn primary" onclick="app.loadUserOrders()">
+                            <i class="fa-solid fa-shopping-cart"></i>
+                            Мои заказы
+                        </button>
+                        <button class="btn secondary" onclick="app.loadPage('services')">
+                            <i class="fa-solid fa-plus"></i>
+                            Новый заказ
+                        </button>
+                        <button class="btn secondary" onclick="app.logout()">
+                            <i class="fa-solid fa-sign-out-alt"></i>
+                            Выйти
+                        </button>
                         <div class="team-avatar">
                             <i class="fa-solid fa-user-gear" style="font-size: 4rem; color: var(--accent);"></i>
                         </div>
                         <h3>Технический специалист</h3>
                         <p>Эксперт по восстановлению устройств и решению сложных технических задач</p>
                         <div class="team-skills">
-                            <span class="skill-tag">EDL Recovery</span>
-                            <span class="skill-tag">Bootloader</span>
-                            <span class="skill-tag">Firmware</span>
-                            <span class="skill-tag">Hardware</span>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -977,6 +1203,24 @@ class RootzsuApp {
                                         'Нет скриншота'
                                     }
                                 </td>
+            case 'cabinet':
+                if (!this.currentUser) {
+                    // Initialize Google Sign-In button
+                    setTimeout(() => {
+                        if (typeof google !== 'undefined' && google.accounts) {
+                            google.accounts.id.renderButton(
+                                document.getElementById('google-signin-button'),
+                                {
+                                    theme: 'outline',
+                                    size: 'large',
+                                    text: 'signin_with',
+                                    width: 250
+                                }
+                            );
+                        }
+                    }, 100);
+                }
+                break;
                                 <td class="admin-actions">
                                     <button class="admin-btn approve" onclick="app.approvePayment(${payment.order_id})" data-lang-key="admin_approve">Одобрить</button>
                                     <button class="admin-btn reject" onclick="app.rejectPayment(${payment.order_id})" data-lang-key="admin_reject">Отклонить</button>
@@ -1027,6 +1271,11 @@ class RootzsuApp {
             if (response.ok) {
                 this.showToast('Платеж отклонен', 'success');
                 this.loadAdminPayments(); // Refresh the list
+        if (!this.currentUser) {
+            this.showToast('Войдите в систему для отправки обращения', 'warning');
+            return;
+        }
+        
             } else {
                 this.showToast(result.error || 'Ошибка отклонения', 'error');
             }
@@ -1034,6 +1283,8 @@ class RootzsuApp {
             console.error('Error rejecting payment:', error);
             this.showToast('Ошибка отклонения платежа', 'error');
         }
+                    user_id: this.currentUser.user_id,
+                    category: 'general',
     }
 
     async loadStatusData() {
@@ -1051,6 +1302,12 @@ class RootzsuApp {
     }
 
     async orderService(serviceId) {
+        if (!this.currentUser) {
+            this.showToast('Войдите в систему для заказа услуг', 'warning');
+            this.loadPage('cabinet');
+            return;
+        }
+        
         if (!this.currentUser) {
             this.showToast('Необходимо войти в систему', 'error');
             this.loadPage('cabinet');
@@ -1071,6 +1328,7 @@ class RootzsuApp {
             priceUsd: service.price_usd,
             priceEur: service.price_eur,
             priceUah: service.price_uah,
+                    user_id: this.currentUser?.user_id
             priceStars: service.price_stars
         };
 
@@ -1213,7 +1471,9 @@ class RootzsuApp {
             }
         });
 
-        document.body.appendChild(modal);
+                priceStars: service.price_stars || 0,
+                priceCoins: service.price_coins || 0
+                userId: this.currentUser.user_id,
         modal.classList.add('show');
         input.focus();
     }

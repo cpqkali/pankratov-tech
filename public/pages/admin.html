@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ панель - Rootzsu</title>
+    <link rel="stylesheet" href="../css/admin.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div id="admin-login" class="login-container">
+        <div class="login-form glass">
+            <h2><i class="fa-solid fa-shield-halved"></i> Админ панель</h2>
+            <form id="admin-login-form">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="admin-email" required>
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" id="admin-password" required>
+                </div>
+                <button type="submit" class="btn primary">
+                    <i class="fa-solid fa-sign-in-alt"></i>
+                    Войти
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="admin-panel" class="admin-container" style="display: none;">
+        <aside class="admin-sidebar">
+            <div class="admin-logo">
+                <h2>ROOTZSU ADMIN</h2>
+            </div>
+            <nav class="admin-nav">
+                <a href="#dashboard" class="nav-item active" data-section="dashboard">
+                    <i class="fa-solid fa-chart-line"></i>
+                    Дашборд
+                </a>
+                <a href="#programs" class="nav-item" data-section="programs">
+                    <i class="fa-solid fa-code"></i>
+                    Программы
+                </a>
+                <a href="#users" class="nav-item" data-section="users">
+                    <i class="fa-solid fa-users"></i>
+                    Пользователи
+                </a>
+                <a href="#orders" class="nav-item" data-section="orders">
+                    <i class="fa-solid fa-shopping-cart"></i>
+                    Заказы
+                </a>
+                <a href="#news" class="nav-item" data-section="news">
+                    <i class="fa-solid fa-newspaper"></i>
+                    Новости
+                </a>
+                <a href="#settings" class="nav-item" data-section="settings">
+                    <i class="fa-solid fa-cog"></i>
+                    Настройки
+                </a>
+            </nav>
+            <div class="admin-user">
+                <div class="user-info">
+                    <img id="admin-avatar" src="" alt="Admin" class="user-avatar">
+                    <div>
+                        <div class="user-name" id="admin-name">Admin</div>
+                        <div class="user-role">Администратор</div>
+                    </div>
+                </div>
+                <button id="admin-logout" class="btn secondary">
+                    <i class="fa-solid fa-sign-out-alt"></i>
+                    Выйти
+                </button>
+            </div>
+        </aside>
+
+        <main class="admin-main">
+            <header class="admin-header">
+                <h1 id="section-title">Дашборд</h1>
+                <div class="header-actions">
+                    <button class="btn primary" id="add-program-btn" style="display: none;">
+                        <i class="fa-solid fa-plus"></i>
+                        Добавить программу
+                    </button>
+                </div>
+            </header>
+
+            <div class="admin-content">
+                <!-- Dashboard Section -->
+                <section id="dashboard-section" class="admin-section active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fa-solid fa-users"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="total-users">0</h3>
+                                <p>Пользователей</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="total-programs">0</h3>
+                                <p>Программ</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fa-solid fa-download"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="total-downloads">0</h3>
+                                <p>Загрузок</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fa-solid fa-shopping-cart"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="total-orders">0</h3>
+                                <p>Заказов</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-charts">
+                        <div class="chart-card">
+                            <h3>Активность пользователей</h3>
+                            <div class="chart-placeholder">
+                                <p>График активности пользователей</p>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Популярные программы</h3>
+                            <div class="chart-placeholder">
+                                <p>График популярности программ</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Programs Section -->
+                <section id="programs-section" class="admin-section">
+                    <div class="section-header">
+                        <div class="search-bar">
+                            <input type="text" placeholder="Поиск программ..." id="programs-search">
+                            <i class="fa-solid fa-search"></i>
+                        </div>
+                        <div class="filter-tabs">
+                            <button class="filter-btn active" data-filter="all">Все</button>
+                            <button class="filter-btn" data-filter="pc">ПК</button>
+                            <button class="filter-btn" data-filter="tools">Инструменты</button>
+                            <button class="filter-btn" data-filter="bots">Боты</button>
+                        </div>
+                    </div>
+                    <div class="programs-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Название</th>
+                                    <th>Категория</th>
+                                    <th>Версия</th>
+                                    <th>Загрузки</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="programs-table-body">
+                                <!-- Programs will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Users Section -->
+                <section id="users-section" class="admin-section">
+                    <div class="users-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Пользователь</th>
+                                    <th>Email</th>
+                                    <th>Дата регистрации</th>
+                                    <th>Заказы</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <!-- Users will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Orders Section -->
+                <section id="orders-section" class="admin-section">
+                    <div class="orders-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Пользователь</th>
+                                    <th>Услуга</th>
+                                    <th>Сумма</th>
+                                    <th>Статус</th>
+                                    <th>Дата</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orders-table-body">
+                                <!-- Orders will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- News Section -->
+                <section id="news-section" class="admin-section">
+                    <div class="news-management">
+                        <button class="btn primary" id="add-news-btn">
+                            <i class="fa-solid fa-plus"></i>
+                            Добавить новость
+                        </button>
+                        <div class="news-list" id="news-list">
+                            <!-- News will be loaded here -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Settings Section -->
+                <section id="settings-section" class="admin-section">
+                    <div class="settings-form">
+                        <h3>Настройки системы</h3>
+                        <form id="settings-form">
+                            <div class="form-group">
+                                <label>Название сайта</label>
+                                <input type="text" id="site-name" value="Rootzsu Services">
+                            </div>
+                            <div class="form-group">
+                                <label>Email для уведомлений</label>
+                                <input type="email" id="notification-email" value="admin@rootzsu.com">
+                            </div>
+                            <div class="form-group">
+                                <label>Telegram Bot Token</label>
+                                <input type="text" id="bot-token" placeholder="Введите токен бота">
+                            </div>
+                            <button type="submit" class="btn primary">
+                                <i class="fa-solid fa-save"></i>
+                                Сохранить настройки
+                            </button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add Program Modal -->
+    <div id="add-program-modal" class="modal-container">
+        <div class="modal-content glass">
+            <button class="modal-close-btn">&times;</button>
+            <h2>Добавить программу</h2>
+            <form id="add-program-form">
+                <div class="form-group">
+                    <label>Название</label>
+                    <input type="text" id="program-title" required>
+                </div>
+                <div class="form-group">
+                    <label>Описание</label>
+                    <textarea id="program-description" rows="3" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Категория</label>
+                    <select id="program-category" required>
+                        <option value="pc">ПК программы</option>
+                        <option value="tools">Полезные инструменты</option>
+                        <option value="bots">Telegram боты</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Иконка (emoji)</label>
+                    <input type="text" id="program-icon" placeholder="🚀" maxlength="2">
+                </div>
+                <div class="form-group">
+                    <label>Версия</label>
+                    <input type="text" id="program-version" placeholder="1.0.0" required>
+                </div>
+                <div class="form-group">
+                    <label>Размер</label>
+                    <input type="text" id="program-size" placeholder="10.5 MB">
+                </div>
+                <div class="form-group">
+                    <label>Ссылка для скачивания</label>
+                    <input type="url" id="program-download-url" required>
+                </div>
+                <div class="form-group">
+                    <label>Возможности (по одной на строку)</label>
+                    <textarea id="program-features" rows="4" placeholder="Возможность 1&#10;Возможность 2&#10;Возможность 3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Системные требования</label>
+                    <textarea id="program-requirements" rows="2" placeholder="Windows 10/11, 4GB RAM"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn secondary" onclick="document.getElementById('add-program-modal').classList.remove('show')">
+                        Отмена
+                    </button>
+                    <button type="submit" class="btn primary">
+                        <i class="fa-solid fa-save"></i>
+                        Сохранить
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="../js/admin.js"></script>
+</body>
+</html>
