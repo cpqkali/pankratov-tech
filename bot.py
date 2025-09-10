@@ -110,12 +110,12 @@ CREATE TABLE IF NOT EXISTS payment_proofs (
 
 # --- Configuration & Constants ---
 INITIAL_ADMIN_ID = 7498691085  # !!! ЗАМЕНИТЕ НА ВАШ TELEGRAM ID !!!
-BOT_TOKEN = "8216150687:AAEwIBj6L_Cw_ZPihPr8ZJ68gXjlh5WfIpw" # !!! ЗАМЕНИТЕ НА ВАШ ТОКЕН !!!
+BOT_TOKEN = "8321468729:AAG7slkyM86fjTHwD7vTOF2NjaGjxUoHosc" # !!! ЗАМЕНИТЕ НА ВАШ ТОКЕН !!!
 
 PAYMENT_WALLET_USD = "UQCKtm0RoDtPCyObq18G-FKehsDPaVIiVX5Z8q78P_XfmTUh"
 PAYMENT_WALLET_BTC = "1DSxcGNMgtGE6i6ZALVn4g9kqc9F2ABtSp"
 PAYMENT_WALLET_EUR = "NOT ADDED YET"
-PAYMENT_WALLET_UAH = "NOT ADDED YET"
+PAYMENT_WALLET_UAH = "4149 6090 1876 9549"
 ADMIN_CHAT_ID = INITIAL_ADMIN_ID
 
 # --- НОВЫЕ СТАТУСЫ ДЛЯ ОБРАБОТЧИКА РАЗГОВОРА ---
