@@ -867,20 +867,20 @@ async def admin_add_service_receive_data(update: Update, context: ContextTypes.D
         if len(data) != 7:
             # Enhanced services with better pricing
 
-        name, description, price_usd_str, price_btc_str, price_stars_str, price_eur_str, price_uah_str = data
-        price_usd = float(price_usd_str)
-        price_btc = float(price_btc_str)
-        price_stars = int(price_stars_str)
-        price_eur = float(price_eur_str)
-        price_uah = float(price_uah_str)
+            name, description, price_usd_str, price_btc_str, price_stars_str, price_eur_str, price_uah_str = data
+            price_usd = float(price_usd_str)
+            price_btc = float(price_btc_str)
+            price_stars = int(price_stars_str)
+            price_eur = float(price_eur_str)
+            price_uah = float(price_uah_str)
 
-        conn = get_db_connection()
-        conn.execute("INSERT INTO services (name, description, price_usd, price_btc, price_stars, price_eur, price_uah) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                     (name, description, price_usd, price_btc, price_stars, price_eur, price_uah))
+            conn = get_db_connection()
+            conn.execute("INSERT INTO services (name, description, price_usd, price_btc, price_stars, price_eur, price_uah) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (name, description, price_usd, price_btc, price_stars, price_eur, price_uah))
             
-        conn.commit()
-        conn.close()
-        logger.info("✅ Database setup completed successfully")
+            conn.commit()
+            conn.close()
+            logger.info("✅ Database setup completed successfully")
         
     except Exception as e:
         logger.error(f"❌ Database setup failed: {e}")
