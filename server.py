@@ -10,6 +10,8 @@ import json
 import logging
 import secrets
 import smtplib
+import subprocess
+from pathlib import Path
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import Flask, jsonify, g, request, send_from_directory, session
@@ -24,7 +26,15 @@ import uuid
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # --- Logging ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('logs/server.log') if os.path.exists('logs') else logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # --- Settings ---
 PORT = int(os.environ.get("PORT", 5000))
@@ -39,6 +49,43 @@ app = Flask(__name__, static_folder='public', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 CORS(app)
 
+# --- Bot Status Management ---
+def update_bot_status():
+    """Update bot status file to indicate server is running"""
+    try:
+        with open(BOT_STATUS_FILE, 'w') as f:
+            f.write(f"Server running at {time.time()}")
+    except Exception as e:
+        logger.error(f"Failed to update bot status: {e}")
+
+def check_bot_process():
+    """Check if bot process is running"""
+    try:
+        # Check if bot.py process is running
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmdline = proc.info['cmdline']
+                if cmdline and 'bot.py' in ' '.join(cmdline):
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return False
+    except Exception as e:
+        logger.error(f"Error checking bot process: {e}")
+        return False
+
+def start_bot_if_needed():
+    """Start bot process if it's not running"""
+    if not check_bot_process():
+        try:
+            logger.info("🤖 Starting Telegram bot...")
+            subprocess.Popen([sys.executable, 'bot.py'], 
+                           stdout=subprocess.PIPE, 
+                           stderr=subprocess.PIPE)
+            logger.info("✅ Bot process started")
+        except Exception as e:
+            logger.error(f"❌ Failed to start bot: {e}")
+
 # --- Admin Credentials ---
 ADMIN_USERNAME = "aishch_admin2012"
 ADMIN_PASSWORD_HASH = generate_password_hash("alpha_rootzsu-admin2012")
@@ -52,7 +99,7 @@ def get_db():
             db = g._database = sqlite3.connect(DB_FILE)
             db.row_factory = sqlite3.Row
         except sqlite3.Error as e:
-            logging.error(f"DB connection error: {e}")
+            logger.error(f"DB connection error: {e}")
             return None
     return db
 
@@ -259,7 +306,7 @@ def setup_database():
     if not cursor.fetchone():
         cursor.execute("INSERT INTO admins (username, password_hash, phone) VALUES (?, ?, ?)", 
                       (ADMIN_USERNAME, ADMIN_PASSWORD_HASH, ADMIN_PHONE))
-        logging.info("Default admin user created.")
+        logger.info("Default admin user created.")
 
     # Insert enhanced services
     cursor.execute("SELECT COUNT(*) FROM services")
@@ -287,7 +334,7 @@ def setup_database():
             "INSERT INTO services (name, description, category, price_usd, price_eur, price_uah, price_coins, difficulty_level, estimated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             enhanced_services
         )
-        logging.info("Enhanced services added.")
+        logger.info("Enhanced services added.")
 
     # Insert sample news
     cursor.execute("SELECT COUNT(*) FROM news")
@@ -301,11 +348,11 @@ def setup_database():
             "INSERT INTO news (title, content, author_id, is_published, priority) VALUES (?, ?, ?, ?, ?)",
             sample_news
         )
-        logging.info("Sample news added.")
+        logger.info("Sample news added.")
 
     conn.commit()
     conn.close()
-    logging.info("Database setup complete.")
+    logger.info("Database setup complete.")
 
 # --- Helper Functions ---
 def generate_2fa_code():
@@ -314,7 +361,7 @@ def generate_2fa_code():
 def send_sms_code(phone, code):
     # In a real implementation, you would use an SMS service like Twilio
     # For demo purposes, we'll just log it
-    logging.info(f"SMS Code {code} would be sent to {phone}")
+    logger.info(f"SMS Code {code} would be sent to {phone}")
     return True
 
 def add_coins_to_user(user_id, amount, transaction_type, description, order_id=None):
@@ -334,28 +381,46 @@ def generate_receipt_id():
 # System Status (Enhanced)
 @app.route('/api/status', methods=['GET'])
 def get_status():
+    """Enhanced system status with bot monitoring"""
     db = get_db()
     if not db: 
         return jsonify({"error": "Database not available"}), 500
+    
+    # Update our status
+    update_bot_status()
     
     user_count = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     active_orders = db.execute("SELECT COUNT(*) FROM orders WHERE status IN ('pending', 'in_progress')").fetchone()[0]
     completed_orders = db.execute("SELECT COUNT(*) FROM orders WHERE status = 'completed'").fetchone()[0]
     total_revenue = db.execute("SELECT SUM(price_paid) FROM orders WHERE status = 'completed'").fetchone()[0] or 0
-    bot_online = os.path.exists(BOT_STATUS_FILE) and (time.time() - os.path.getmtime(BOT_STATUS_FILE)) < 60
+    
+    # Check bot status more thoroughly
+    bot_online = check_bot_process() or (os.path.exists(BOT_STATUS_FILE) and (time.time() - os.path.getmtime(BOT_STATUS_FILE)) < 120)
     uptime = time.time() - START_TIME
     
+    # Get system metrics safely
+    try:
+        cpu_usage = psutil.cpu_percent(interval=0.1)
+        ram_usage = psutil.virtual_memory().percent
+        disk_usage = psutil.disk_usage('/').percent
+        server_load = os.getloadavg()[0] if hasattr(os, 'getloadavg') else 0
+    except Exception as e:
+        logger.warning(f"Failed to get system metrics: {e}")
+        cpu_usage = ram_usage = disk_usage = server_load = 0
+    
     return jsonify({
-        "cpu_usage": psutil.cpu_percent(interval=0.1),
-        "ram_usage": psutil.virtual_memory().percent,
-        "disk_usage": psutil.disk_usage('/').percent,
+        "cpu_usage": cpu_usage,
+        "ram_usage": ram_usage,
+        "disk_usage": disk_usage,
         "user_count": user_count,
         "active_orders": active_orders,
         "completed_orders": completed_orders,
         "total_revenue": round(total_revenue, 2),
         "bot_online": bot_online,
         "uptime_hours": round(uptime / 3600, 1),
-        "server_load": os.getloadavg()[0] if hasattr(os, 'getloadavg') else 0
+        "server_load": server_load,
+        "server_status": "healthy",
+        "last_update": datetime.now().isoformat()
     })
 
 # Enhanced Gemini Chat with History
@@ -431,7 +496,7 @@ def gemini_chat():
             "session_id": session_id
         })
     except Exception as e:
-        logging.error(f"Gemini API error: {e}")
+        logger.error(f"Gemini API error: {e}")
         return jsonify({"error": str(e)}), 500
 
 # Chat Sessions Management
@@ -525,10 +590,10 @@ def auth_google():
         })
 
     except ValueError as e:
-        logging.error(f"Invalid token: {e}")
+        logger.error(f"Invalid token: {e}")
         return jsonify({"message": "Invalid token"}), 401
     except Exception as e:
-        logging.error(f"Google Auth Error: {e}", exc_info=True)
+        logger.error(f"Google Auth Error: {e}", exc_info=True)
         return jsonify({"message": "An error occurred during authentication"}), 500
 
 # User Settings (Enhanced)
@@ -1266,18 +1331,116 @@ def respond_to_support_ticket(ticket_id):
 # Health check for Render
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+    """Enhanced health check with system status"""
+    try:
+        # Check database
+        db = get_db()
+        db_status = "healthy" if db else "unhealthy"
+        
+        # Check bot status
+        bot_status = "online" if check_bot_process() else "offline"
+        
+        # Update status file
+        update_bot_status()
+        
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "uptime_seconds": int(time.time() - START_TIME),
+            "database": db_status,
+            "bot_status": bot_status,
+            "version": "1.0.0"
+        })
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+# Bot management endpoints
+@app.route('/api/bot/start', methods=['POST'])
+def start_bot():
+    """Manually start the bot process"""
+    try:
+        if check_bot_process():
+            return jsonify({"message": "Bot is already running"}), 200
+        
+        start_bot_if_needed()
+        return jsonify({"message": "Bot start initiated"}), 200
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/bot/status', methods=['GET'])
+def bot_status():
+    """Get detailed bot status"""
+    try:
+        is_running = check_bot_process()
+        status_file_exists = os.path.exists(BOT_STATUS_FILE)
+        
+        if status_file_exists:
+            status_file_age = time.time() - os.path.getmtime(BOT_STATUS_FILE)
+        else:
+            status_file_age = None
+        
+        return jsonify({
+            "is_running": is_running,
+            "status_file_exists": status_file_exists,
+            "status_file_age_seconds": status_file_age,
+            "last_check": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Failed to get bot status: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # --- SPA Serving ---
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_spa(path):
+    """Serve static files and SPA"""
     if path and os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, "index.html")
 
+# --- Startup Tasks ---
+def startup_tasks():
+    """Run startup tasks"""
+    logger.info("🚀 Running startup tasks...")
+    
+    # Create necessary directories
+    os.makedirs('logs', exist_ok=True)
+    
+    # Setup database
+    setup_database()
+    
+    # Start bot if needed (only in production)
+    if os.getenv('RENDER') or os.getenv('HEROKU'):
+        threading.Timer(5.0, start_bot_if_needed).start()
+    
+    logger.info("✅ Startup tasks completed")
+
+# --- Signal Handlers ---
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    logger.info(f"📡 Received signal {signum}, shutting down gracefully...")
+    sys.exit(0)
+
 # --- Main ---
 if __name__ == "__main__":
-    setup_database()
-    logging.info(f"Server starting on port {PORT}")
-    app.run(host="0.0.0.0", port=PORT, debug=False)
+    # Setup signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # Run startup tasks
+    startup_tasks()
+    
+    logger.info(f"🌐 Server starting on port {PORT}")
+    logger.info(f"🏠 Environment: {'Production' if os.getenv('RENDER') or os.getenv('HEROKU') else 'Development'}")
+    
+    try:
+        app.run(host="0.0.0.0", port=PORT, debug=False, threaded=True)
+    except Exception as e:
+        logger.error(f"❌ Server failed to start: {e}")
+        sys.exit(1)

@@ -2,6 +2,10 @@ import logging
 import sqlite3
 import datetime
 import asyncio
+import os
+import sys
+import time
+import signal
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -19,9 +23,39 @@ from typing import Union, Any
 # --- Logging Configuration ---
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('logs/bot.log') if os.path.exists('logs') else logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
+
+# --- Status File Management ---
+BOT_STATUS_FILE = "bot_status.txt"
+
+def update_status_file():
+    """Update status file to indicate bot is running"""
+    try:
+        with open(BOT_STATUS_FILE, 'w') as f:
+            f.write(f"Bot running at {time.time()}")
+    except Exception as e:
+        logger.error(f"Failed to update status file: {e}")
+
+def cleanup_on_exit():
+    """Cleanup function called on bot shutdown"""
+    logger.info("🧹 Cleaning up bot resources...")
+    try:
+        if os.path.exists(BOT_STATUS_FILE):
+            os.remove(BOT_STATUS_FILE)
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    logger.info(f"📡 Bot received signal {signum}, shutting down...")
+    cleanup_on_exit()
+    sys.exit(0)
 
 # --- Database Management ---
 DB_FILE = "rootzsu_bot_v3.db"
@@ -216,6 +250,7 @@ async def price_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await query.edit_message_text(text=message_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
 async def update_all_usernames(application: Application) -> None:
     """Обновляет username всех пользователей в базе при запуске бота."""
+    logger.info("🔄 Updating user information...")
     conn = get_db_connection()
     cursor = conn.cursor()
     users = cursor.execute("SELECT user_id FROM users").fetchall()
@@ -820,6 +855,7 @@ async def admin_add_service_start(update: Update, context: ContextTypes.DEFAULT_
         "18.0\n"
         "750.0\n\n"
         "Для отмены введите /cancel\\.",
+        # Ensure database is properly set up
         parse_mode='MarkdownV2'
     )
     return STATE_ADMIN_ADD_SERVICE
@@ -829,7 +865,7 @@ async def admin_add_service_receive_data(update: Update, context: ContextTypes.D
     try:
         data = update.message.text.split('\n')
         if len(data) != 7:
-            raise ValueError("Неверное количество строк.")
+            # Enhanced services with better pricing
 
         name, description, price_usd_str, price_btc_str, price_stars_str, price_eur_str, price_uah_str = data
         price_usd = float(price_usd_str)
@@ -841,8 +877,14 @@ async def admin_add_service_receive_data(update: Update, context: ContextTypes.D
         conn = get_db_connection()
         conn.execute("INSERT INTO services (name, description, price_usd, price_btc, price_stars, price_eur, price_uah) VALUES (?, ?, ?, ?, ?, ?, ?)",
                      (name, description, price_usd, price_btc, price_stars, price_eur, price_uah))
+            
         conn.commit()
         conn.close()
+        logger.info("✅ Database setup completed successfully")
+        
+    except Exception as e:
+        logger.error(f"❌ Database setup failed: {e}")
+        raise
         
         await update.message.reply_text("✅ Услуга успешно добавлена\\!")
     except (ValueError, IndexError) as e:
@@ -901,85 +943,117 @@ async def admin_delete_service_confirm(update: Update, context: ContextTypes.DEF
 
 def main() -> None:
     """The main function to set up and run the bot."""
-    setup_database(initial_admin_id=INITIAL_ADMIN_ID)
-
-    # Create the application
-    application = Application.builder().token(BOT_TOKEN).build()
-
-    # ConversationHandler for the entire bot
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            STATE_MAIN_MENU: [
-                CallbackQueryHandler(start, pattern="^main_menu$"),
-                CallbackQueryHandler(price_list, pattern="^price_list$"),
-                CallbackQueryHandler(my_account, pattern="^my_account$"),
-                CallbackQueryHandler(order_service_start, pattern="^order_service_start$"),
-                CallbackQueryHandler(start_admin_chat, pattern="^contact_admin$"),
-                CallbackQueryHandler(admin_panel, pattern="^admin_panel$"),
-                CallbackQueryHandler(admin_stats, pattern="^admin_stats$"),
-                CallbackQueryHandler(admin_users_list, pattern="^admin_users_list$"),
-                CallbackQueryHandler(admin_orders_list, pattern="^admin_orders_list$"),
-                CallbackQueryHandler(admin_manage_services, pattern="^admin_manage_services$"),
-                CallbackQueryHandler(admin_add_service_start, pattern="^admin_add_service$"),
-                CallbackQueryHandler(admin_delete_service_start, pattern="^admin_delete_service_start$"),
-                CallbackQueryHandler(admin_manage_admins, pattern="^admin_manage_admins$"),
-                CallbackQueryHandler(admin_add_start, pattern="^admin_add_start$"),
-                CallbackQueryHandler(admin_remove_start, pattern="^admin_remove_start$"),
-                CallbackQueryHandler(admin_broadcast_start, pattern="^admin_broadcast_start$"),
-                # Admin action for rejecting a proof, which starts a new state
-                CallbackQueryHandler(admin_reject_proof_with_comment, pattern="^reject_proof_")
-            ],
-            STATE_SELECTING_SERVICE: [
-                CallbackQueryHandler(select_service, pattern="^select_service_"),
-                CallbackQueryHandler(cancel_flow, pattern="^cancel_order$")
-            ],
-            STATE_SELECTING_PAYMENT: [
-                CallbackQueryHandler(select_payment, pattern="^pay_"),
-                CallbackQueryHandler(cancel_flow, pattern="^cancel_order$")
-            ],
-            STATE_UPLOADING_PROOF: [
-                MessageHandler(filters.PHOTO | filters.Document.ALL & ~filters.COMMAND, upload_payment_proof),
-                CommandHandler("cancel", cancel_flow)
-            ],
-            STATE_USER_TO_ADMIN_CHAT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_to_admin_message),
-                CallbackQueryHandler(cancel_flow, pattern="^main_menu$")
-            ],
-            STATE_ADMIN_ADD_ID: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_receive_id),
-                CommandHandler("cancel", cancel_flow)
-            ],
-            STATE_ADMIN_REMOVE_ID: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_remove_receive_id),
-                CommandHandler("cancel", cancel_flow)
-            ],
-            STATE_ADMIN_BROADCAST_MESSAGE: [  # Corrected state name
-                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_broadcast_receive_message),
-                CommandHandler("cancel", cancel_flow)
-            ],
-            STATE_ADMIN_REJECT_PROOF: [ # Added handler for rejecting proof
-                MessageHandler(filters.TEXT & ~filters.COMMAND, save_reject_comment),
-                CommandHandler("cancel", cancel_flow)
-            ],
-        },
-        fallbacks=[CommandHandler("start", start), CommandHandler("cancel", cancel_flow)],
-    )
-
-    # Register the ConversationHandler
-    application.add_handler(conv_handler)
+    logger.info("🤖 Starting Rootzsu Telegram Bot...")
     
-    # Register the admin reply handler, which should work outside the conversation
-    application.add_handler(MessageHandler(filters.REPLY & filters.User(ADMIN_CHAT_ID) & filters.TEXT, handle_admin_reply))
+    # Setup signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    try:
+        # Setup database
+        setup_database(initial_admin_id=INITIAL_ADMIN_ID)
+        
+        # Create the application
+        application = Application.builder().token(BOT_TOKEN).build()
+        
+        # Update status file
+        update_status_file()
 
-    # Schedule the username update task
-    application.job_queue.run_once(
-        lambda ctx: update_all_usernames(application),
-        when=1
-    )
+        # ConversationHandler for the entire bot
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler("start", start)],
+            states={
+                STATE_MAIN_MENU: [
+                    CallbackQueryHandler(start, pattern="^main_menu$"),
+                    CallbackQueryHandler(price_list, pattern="^price_list$"),
+                    CallbackQueryHandler(my_account, pattern="^my_account$"),
+                    CallbackQueryHandler(order_service_start, pattern="^order_service_start$"),
+                    CallbackQueryHandler(start_admin_chat, pattern="^contact_admin$"),
+                    CallbackQueryHandler(admin_panel, pattern="^admin_panel$"),
+                    CallbackQueryHandler(admin_stats, pattern="^admin_stats$"),
+                    CallbackQueryHandler(admin_users_list, pattern="^admin_users_list$"),
+                    CallbackQueryHandler(admin_orders_list, pattern="^admin_orders_list$"),
+                    CallbackQueryHandler(admin_manage_services, pattern="^admin_manage_services$"),
+                    CallbackQueryHandler(admin_add_service_start, pattern="^admin_add_service$"),
+                    CallbackQueryHandler(admin_delete_service_start, pattern="^admin_delete_service_start$"),
+                    CallbackQueryHandler(admin_manage_admins, pattern="^admin_manage_admins$"),
+                    CallbackQueryHandler(admin_add_start, pattern="^admin_add_start$"),
+                    CallbackQueryHandler(admin_remove_start, pattern="^admin_remove_start$"),
+                    CallbackQueryHandler(admin_broadcast_start, pattern="^admin_broadcast_start$"),
+                    # Admin action for rejecting a proof, which starts a new state
+                    CallbackQueryHandler(admin_reject_proof_with_comment, pattern="^reject_proof_")
+                ],
+                STATE_SELECTING_SERVICE: [
+                    CallbackQueryHandler(select_service, pattern="^select_service_"),
+                    CallbackQueryHandler(cancel_flow, pattern="^cancel_order$")
+                ],
+                STATE_SELECTING_PAYMENT: [
+                    CallbackQueryHandler(select_payment, pattern="^pay_"),
+                    CallbackQueryHandler(cancel_flow, pattern="^cancel_order$")
+                ],
+                STATE_UPLOADING_PROOF: [
+                    MessageHandler(filters.PHOTO | filters.Document.ALL & ~filters.COMMAND, upload_payment_proof),
+                    CommandHandler("cancel", cancel_flow)
+                ],
+                STATE_USER_TO_ADMIN_CHAT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_to_admin_message),
+                    CallbackQueryHandler(cancel_flow, pattern="^main_menu$")
+                ],
+                STATE_ADMIN_ADD_ID: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_receive_id),
+                    CommandHandler("cancel", cancel_flow)
+                ],
+                STATE_ADMIN_REMOVE_ID: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, admin_remove_receive_id),
+                    CommandHandler("cancel", cancel_flow)
+                ],
+                STATE_ADMIN_BROADCAST_MESSAGE: [  # Corrected state name
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, admin_broadcast_receive_message),
+                    CommandHandler("cancel", cancel_flow)
+                ],
+                STATE_ADMIN_REJECT_PROOF: [ # Added handler for rejecting proof
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, save_reject_comment),
+                    CommandHandler("cancel", cancel_flow)
+                ],
+            },
+            fallbacks=[CommandHandler("start", start), CommandHandler("cancel", cancel_flow)],
+        )
 
-    # Start the bot
-    application.run_polling()
+        # Register the ConversationHandler
+        application.add_handler(conv_handler)
+        
+        # Register the admin reply handler, which should work outside the conversation
+        application.add_handler(MessageHandler(filters.REPLY & filters.User(ADMIN_CHAT_ID) & filters.TEXT, handle_admin_reply))
+
+        # Schedule the username update task
+        application.job_queue.run_once(
+            lambda ctx: update_all_usernames(application),
+            when=1
+        )
+        
+        # Schedule periodic status updates
+        application.job_queue.run_repeating(
+            lambda ctx: update_status_file(),
+            interval=30,  # Update every 30 seconds
+            first=10
+        )
+
+        logger.info("✅ Bot setup completed, starting polling...")
+        
+        # Start the bot
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Bot startup failed: {e}")
+        cleanup_on_exit()
+        sys.exit(1)
+    finally:
+        cleanup_on_exit()
+
 
 if __name__ == "__main__":
+    logger.info("🚀 Rootzsu Bot starting...")
     main()

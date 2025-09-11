@@ -1,12 +1,19 @@
 {
   "name": "project",
   "version": "1.0.0",
-  "description": "",
+  "description": "Rootzsu Services - Professional IT Services Platform",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "python server.py",
+    "dev": "python server.py",
+    "build": "echo \"No build step required for Python backend\"",
+    "bot": "python bot.py"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "keywords": ["telegram-bot", "it-services", "python", "flask"],
+  "author": "Rootzsu Team",
+  "license": "MIT",
+  "engines": {
+    "python": "3.11.x"
+  }
 }
