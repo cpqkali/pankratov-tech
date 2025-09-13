@@ -69,8 +69,10 @@ def close_db(e=None):
         db.close()
 
 @app.teardown_appcontext
-def close_db(error):
-    close_db()
+def close_db(error=None):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
 
 def init_database():
     """Initialize database with tables"""
