@@ -16,7 +16,7 @@ import threading
 from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
-from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
+
 import requests
 from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
@@ -40,10 +40,7 @@ logger = logging.getLogger(__name__)
 # Flask app configuration
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'pankratov-tech-secret-key-2025')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  
-app.config['JWT_SECRET_KEY'] = 'dev-secret-key-change-in-production-12345'   
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
-jwt = JWTManager(app)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # CORS configuration
 CORS(app, origins=['*'])
@@ -290,34 +287,7 @@ def admin_required(f):
         return f(*args, **kwargs)
     
     return decorated_function
-@app.route('/api/auth/me', methods=['GET'])
-@jwt_required()
-def get_current_user():
-    try:
-        current_user_id = get_jwt_identity()
-        
-        # Получаем пользователя из базы данных
-        db = get_db()
-        user = db.execute(
-            'SELECT user_id, email, username, phone, country, avatar_url, created_at FROM users WHERE user_id = ?',
-            (current_user_id,)
-        ).fetchone()
-        
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-        
-        return jsonify({
-            'user_id': user['user_id'],
-            'email': user['email'],
-            'username': user['username'],
-            'phone': user['phone'],
-            'country': user['country'],
-            'avatar_url': user['avatar_url'],
-            'created_at': user['created_at']
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+
 # Routes
 @app.route('/')
 def index():
