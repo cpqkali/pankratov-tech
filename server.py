@@ -16,7 +16,7 @@ import threading
 from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
-
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
 import requests
 from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
@@ -40,7 +40,10 @@ logger = logging.getLogger(__name__)
 # Flask app configuration
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'pankratov-tech-secret-key-2025')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  
+app.config['JWT_SECRET_KEY'] = 'dev-secret-key-change-in-production-12345'   
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+jwt = JWTManager(app)
 
 # CORS configuration
 CORS(app, origins=['*'])
