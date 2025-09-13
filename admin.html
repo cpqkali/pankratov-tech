@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ панель - Pankratov Tech</title>
+    <link rel="icon" href="favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/admin.css">
+</head>
+<body>
+    <!-- Admin Panel -->
+    <div class="admin-container">
+        <!-- Sidebar -->
+        <aside class="admin-sidebar">
+            <div class="admin-header">
+                <div class="admin-logo">
+                    <h2>PANKRATOV TECH</h2>
+                    <span>Admin Panel</span>
+                </div>
+            </div>
+            
+            <nav class="admin-nav">
+                <a href="#dashboard" class="nav-item active" data-section="dashboard">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Дашборд</span>
+                </a>
+                <a href="#orders" class="nav-item" data-section="orders">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span>Список заказов</span>
+                </a>
+                <a href="#programs" class="nav-item" data-section="programs">
+                    <i class="fas fa-code"></i>
+                    <span>Программы</span>
+                </a>
+                <a href="#news" class="nav-item" data-section="news">
+                    <i class="fas fa-newspaper"></i>
+                    <span>Новости</span>
+                </a>
+                <a href="#users" class="nav-item" data-section="users">
+                    <i class="fas fa-users"></i>
+                    <span>Все пользователи</span>
+                </a>
+            </nav>
+            
+            <div class="admin-user">
+                <div class="user-info">
+                    <img id="admin-avatar" src="static/images/default-avatar.png" alt="Admin" class="user-avatar">
+                    <div class="user-details">
+                        <div class="user-name" id="admin-name">Admin</div>
+                        <div class="user-role">Администратор</div>
+                    </div>
+                </div>
+                <button class="btn btn-outline" onclick="adminApp.logout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Выйти
+                </button>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="admin-main">
+            <header class="admin-top-bar">
+                <h1 id="section-title">Дашборд</h1>
+                <div class="admin-actions">
+                    <button class="btn btn-primary" id="add-item-btn" style="display: none;">
+                        <i class="fas fa-plus"></i>
+                        <span id="add-item-text">Добавить</span>
+                    </button>
+                </div>
+            </header>
+            
+            <div class="admin-content">
+                <!-- Dashboard Section -->
+                <section id="dashboard-section" class="admin-section active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="total-users">0</h3>
+                                <p>Пользователей</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-shopping-cart"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="total-orders">0</h3>
+                                <p>Заказов</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-code"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="total-programs">0</h3>
+                                <p>Программ</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-newspaper"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="total-news">0</h3>
+                                <p>Новостей</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="pending-orders">0</h3>
+                                <p>Ожидают</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-money-bill-wave"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="total-revenue">0</h3>
+                                <p>Доход (UAH)</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-charts">
+                        <div class="chart-card">
+                            <h3>Последние заказы</h3>
+                            <div id="recent-orders" class="recent-items">
+                                <!-- Recent orders will be loaded here -->
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Активность пользователей</h3>
+                            <div class="chart-placeholder">
+                                <p>График активности будет добавлен позже</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Orders Section -->
+                <section id="orders-section" class="admin-section">
+                    <div class="section-controls">
+                        <div class="search-bar">
+                            <input type="text" id="orders-search" placeholder="Поиск заказов...">
+                            <i class="fas fa-search"></i>
+                        </div>
+                        <div class="filter-buttons">
+                            <button class="filter-btn active" data-filter="all">Все</button>
+                            <button class="filter-btn" data-filter="pending">Ожидают</button>
+                            <button class="filter-btn" data-filter="approved">Одобрены</button>
+                            <button class="filter-btn" data-filter="rejected">Отклонены</button>
+                        </div>
+                    </div>
+                    
+                    <div class="orders-list" id="orders-list">
+                        <!-- Orders will be loaded here -->
+                    </div>
+                </section>
+                
+                <!-- Programs Section -->
+                <section id="programs-section" class="admin-section">
+                    <div class="programs-grid" id="programs-grid">
+                        <!-- Programs will be loaded here -->
+                    </div>
+                </section>
+                
+                <!-- News Section -->
+                <section id="news-section" class="admin-section">
+                    <div class="news-list" id="news-list">
+                        <!-- News will be loaded here -->
+                    </div>
+                </section>
+                
+                <!-- Users Section -->
+                <section id="users-section" class="admin-section">
+                    <div class="users-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Имя</th>
+                                    <th>Email</th>
+                                    <th>Страна</th>
+                                    <th>Заказов</th>
+                                    <th>Дата регистрации</th>
+                                    <th>Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <!-- Users will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Modals -->
+    <!-- Order Details Modal -->
+    <div id="order-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Детали заказа</h3>
+                <button class="modal-close" onclick="closeModal('order-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="order-details">
+                <!-- Order details will be loaded here -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add Program Modal -->
+    <div id="program-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="program-modal-title">Добавить программу</h3>
+                <button class="modal-close" onclick="closeModal('program-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="program-form">
+                    <div class="form-group">
+                        <label>Название программы</label>
+                        <input type="text" id="program-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Описание</label>
+                        <textarea id="program-description" rows="3" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Язык программирования</label>
+                        <select id="program-language">
+                            <option value="Python">Python</option>
+                            <option value="JavaScript">JavaScript</option>
+                            <option value="Java">Java</option>
+                            <option value="C++">C++</option>
+                            <option value="C#">C#</option>
+                            <option value="PHP">PHP</option>
+                            <option value="Go">Go</option>
+                            <option value="Rust">Rust</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Версия</label>
+                        <input type="text" id="program-version" value="1.0">
+                    </div>
+                    <div class="form-group">
+                        <label>Иконка (emoji или HTML)</label>
+                        <input type="text" id="program-icon" placeholder="🚀 или <i class='fas fa-code'></i>">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" onclick="closeModal('program-modal')">
+                            Отмена
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i>
+                            Сохранить
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add News Modal -->
+    <div id="news-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="news-modal-title">Добавить новость</h3>
+                <button class="modal-close" onclick="closeModal('news-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="news-form">
+                    <div class="form-group">
+                        <label>Заголовок</label>
+                        <input type="text" id="news-title" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Содержание (поддерживается Markdown)</label>
+                        <textarea id="news-content" rows="10" required placeholder="Введите текст новости. Поддерживается Markdown: **жирный**, *курсив*"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" onclick="closeModal('news-modal')">
+                            Отмена
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i>
+                            Опубликовать
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification Container -->
+    <div id="notification-container"></div>
+    
+    <!-- Scripts -->
+    <script src="static/js/utils.js"></script>
+    <script src="static/js/api.js"></script>
+    <script src="static/js/admin.js"></script>
+</body>
+</html>

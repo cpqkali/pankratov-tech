@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pankratov Tech - Профессиональные IT-услуги</title>
+    <link rel="icon" href="favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+    <!-- Preloader -->
+    <div id="preloader">
+        <div class="preloader-content">
+            <div class="logo-animation">
+                <div class="logo-text">PANKRATOV</div>
+                <div class="logo-subtext">TECH</div>
+            </div>
+            <div class="loading-bar">
+                <div class="loading-progress"></div>
+            </div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header id="header">
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <a href="#home" class="brand-link">
+                        <span class="brand-text">PANKRATOV</span>
+                        <span class="brand-subtext">TECH</span>
+                    </a>
+                </div>
+                
+                <div class="nav-menu" id="nav-menu">
+                    <a href="#home" class="nav-link active" data-lang="nav_home">Главная</a>
+                    <a href="#services" class="nav-link" data-lang="nav_services">Услуги</a>
+                    <a href="#programs" class="nav-link" data-lang="nav_programs">Программы</a>
+                    <a href="#news" class="nav-link" data-lang="nav_news">Новости</a>
+                    <a href="#cabinet" class="nav-link" data-lang="nav_cabinet">Кабинет</a>
+                </div>
+
+                <div class="nav-controls">
+                    <div class="language-selector">
+                        <button class="lang-btn" id="lang-btn">
+                            <i class="fas fa-globe"></i>
+                            <span id="current-lang">RU</span>
+                        </button>
+                        <div class="lang-dropdown" id="lang-dropdown">
+                            <div class="lang-option" data-lang="ru">🇷🇺 Русский</div>
+                            <div class="lang-option" data-lang="en">🇺🇸 English</div>
+                            <div class="lang-option" data-lang="uk">🇺🇦 Українська</div>
+                        </div>
+                    </div>
+                    
+                    <button class="theme-toggle" id="theme-toggle">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    
+                    <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </button>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <!-- Home Section -->
+        <section id="home" class="section hero-section">
+            <div class="hero-background">
+                <div class="hero-particles"></div>
+                <div class="hero-gradient"></div>
+            </div>
+            
+            <div class="container">
+                <div class="hero-content">
+                    <div class="hero-text">
+                        <h1 class="hero-title" data-lang="hero_title">
+                            Добро пожаловать в <span class="gradient-text">Pankratov Tech</span>
+                        </h1>
+                        <p class="hero-subtitle" data-lang="hero_subtitle">
+                            Профессиональные IT-услуги и инновационные решения для вашего бизнеса
+                        </p>
+                        <div class="hero-buttons">
+                            <button class="btn btn-primary" onclick="scrollToSection('services')" data-lang="hero_btn_services">
+                                <i class="fas fa-rocket"></i>
+                                Наши услуги
+                            </button>
+                            <button class="btn btn-secondary" onclick="scrollToSection('programs')" data-lang="hero_btn_programs">
+                                <i class="fas fa-code"></i>
+                                Программы
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="hero-stats">
+                        <div class="stat-item">
+                            <div class="stat-number" data-count="500">0</div>
+                            <div class="stat-label" data-lang="stat_clients">Клиентов</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number" data-count="1200">0</div>
+                            <div class="stat-label" data-lang="stat_projects">Проектов</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number" data-count="50">0</div>
+                            <div class="stat-label" data-lang="stat_programs">Программ</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Services Section -->
+        <section id="services" class="section services-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title" data-lang="services_title">Наши услуги</h2>
+                    <p class="section-subtitle" data-lang="services_subtitle">
+                        Предоставляем широкий спектр IT-услуг высочайшего качества
+                    </p>
+                </div>
+                
+                <div class="services-grid" id="services-grid">
+                    <!-- Services will be loaded here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Programs Section -->
+        <section id="programs" class="section programs-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title" data-lang="programs_title">Наши программы</h2>
+                    <p class="section-subtitle" data-lang="programs_subtitle">
+                        Инновационные программные решения от нашей команды
+                    </p>
+                </div>
+                
+                <div class="programs-grid" id="programs-grid">
+                    <!-- Programs will be loaded here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- News Section -->
+        <section id="news" class="section news-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title" data-lang="news_title">Новостная доска</h2>
+                    <p class="section-subtitle" data-lang="news_subtitle">
+                        Последние новости и обновления от Pankratov Tech
+                    </p>
+                </div>
+                
+                <div class="news-grid" id="news-grid">
+                    <!-- News will be loaded here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Cabinet Section -->
+        <section id="cabinet" class="section cabinet-section">
+            <div class="container">
+                <div class="cabinet-content" id="cabinet-content">
+                    <!-- Cabinet content will be loaded here -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modals -->
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 data-lang="login_title">Вход в систему</h3>
+                <button class="modal-close" onclick="closeModal('login-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="auth-tabs">
+                    <button class="auth-tab active" data-tab="login" data-lang="tab_login">Вход</button>
+                    <button class="auth-tab" data-tab="register" data-lang="tab_register">Регистрация</button>
+                </div>
+                
+                <div class="auth-content">
+                    <!-- Login Form -->
+                    <div id="login-form" class="auth-form active">
+                        <div class="google-auth">
+                            <div id="g_id_onload"
+                                 data-client_id="957687109285-gs24ojtjhjkatpi7n0rrpb1c57tf95e2.apps.googleusercontent.com"
+                                 data-callback="handleGoogleLogin">
+                            </div>
+                            <div id="g_id_signin" data-type="standard" data-size="large" data-theme="outline"></div>
+                        </div>
+                        
+                        <div class="divider">
+                            <span data-lang="or">или</span>
+                        </div>
+                        
+                        <form id="email-login-form">
+                            <div class="form-group">
+                                <label data-lang="email">Email</label>
+                                <input type="email" id="login-email" required>
+                            </div>
+                            <div class="form-group">
+                                <label data-lang="password">Пароль</label>
+                                <input type="password" id="login-password" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary full-width" data-lang="login_btn">
+                                Войти
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <!-- Register Form -->
+                    <div id="register-form" class="auth-form">
+                        <form id="email-register-form">
+                            <div class="form-group">
+                                <label data-lang="name">Имя</label>
+                                <input type="text" id="register-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label data-lang="email">Email</label>
+                                <input type="email" id="register-email" required>
+                            </div>
+                            <div class="form-group">
+                                <label data-lang="phone">Телефон (необязательно)</label>
+                                <input type="tel" id="register-phone">
+                            </div>
+                            <div class="form-group">
+                                <label data-lang="country">Страна</label>
+                                <select id="register-country" required>
+                                    <option value="">Выберите страну</option>
+                                    <option value="UA">Украина</option>
+                                    <option value="RU">Россия</option>
+                                    <option value="BY">Беларусь</option>
+                                    <option value="KZ">Казахстан</option>
+                                    <option value="US">США</option>
+                                    <option value="DE">Германия</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label data-lang="password">Пароль</label>
+                                <input type="password" id="register-password" required>
+                            </div>
+                            <div class="form-group">
+                                <label data-lang="confirm_password">Подтвердите пароль</label>
+                                <input type="password" id="register-confirm-password" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary full-width" data-lang="register_btn">
+                                Зарегистрироваться
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Modal -->
+    <div id="order-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 data-lang="order_title">Оформление заказа</h3>
+                <button class="modal-close" onclick="closeModal('order-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="order-modal-body">
+                <!-- Order form will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notification-container"></div>
+
+    <!-- Scripts -->
+    <script src="static/js/translations.js"></script>
+    <script src="static/js/utils.js"></script>
+    <script src="static/js/api.js"></script>
+    <script src="static/js/auth.js"></script>
+    <script src="static/js/main.js"></script>
+</body>
+</html>
