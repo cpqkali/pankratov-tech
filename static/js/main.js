@@ -1,73 +1,63 @@
-// Pankratov Tech - Main Application
+// Phantom Services - Main Application Controller
 
-class PankratovTechApp {
+class PhantomApp {
     constructor() {
-        this.currentSection = 'home';
         this.services = [];
         this.programs = [];
         this.news = [];
+        this.chatMessages = [];
         this.init();
     }
     
     async init() {
-        this.bindEvents();
-        this.initNavigation();
-        this.initMobileMenu();
-        this.initScrollEffects();
+        this.bindGlobalEvents();
+        this.initTheme();
+        this.initLanguage();
+        this.startClock();
         
-        // Load initial data
-        await this.loadData();
-        
-        // Initialize counter animations
-        this.initCounterAnimations();
-        
-        // Update language after everything is loaded
-        if (window.languageManager) {
-            languageManager.updateLanguage();
-        }
+        // Hide preloader after initialization
+        setTimeout(() => {
+            this.hidePreloader();
+        }, 2000);
     }
     
-    bindEvents() {
-        // Service order buttons
+    bindGlobalEvents() {
+        // Global click handlers
         document.addEventListener('click', (e) => {
-            if (e.target.matches('.order-service-btn')) {
-                const serviceId = e.target.dataset.serviceId;
-                this.openOrderModal(serviceId);
-            }
-            
-            if (e.target.matches('.download-program-btn')) {
-                const programId = e.target.dataset.programId;
-                this.downloadProgram(programId);
+            // Close dropdowns when clicking outside
+            if (!e.target.closest('.language-selector')) {
+                document.getElementById('lang-dropdown')?.classList.remove('active');
             }
         });
         
-        // Order form submission
-        const orderForm = document.getElementById('order-form');
-        if (orderForm) {
-            orderForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.submitOrder();
+        // Language selector
+        const langBtn = document.getElementById('lang-btn');
+        const langDropdown = document.getElementById('lang-dropdown');
+        
+        if (langBtn && langDropdown) {
+            langBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                langDropdown.classList.toggle('active');
+            });
+            
+            langDropdown.querySelectorAll('.lang-option').forEach(option => {
+                option.addEventListener('click', () => {
+                    const lang = option.dataset.lang;
+                    this.setLanguage(lang);
+                    langDropdown.classList.remove('active');
+                });
             });
         }
-    }
-    
-    initNavigation() {
-        // Navigation links
-        document.querySelectorAll('.nav-link').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                const section = link.getAttribute('href').substring(1);
-                this.navigateToSection(section);
-            });
-        });
         
-        // Update active nav on scroll
-        ScrollUtils.onScroll(() => {
-            this.updateActiveNavigation();
-        });
-    }
-    
-    initMobileMenu() {
+        // Theme toggle
+        const themeToggle = document.getElementById('theme-toggle');
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                this.toggleTheme();
+            });
+        }
+        
+        // Mobile menu
         const mobileToggle = document.getElementById('mobile-menu-toggle');
         const navMenu = document.getElementById('nav-menu');
         
@@ -76,459 +66,211 @@ class PankratovTechApp {
                 mobileToggle.classList.toggle('active');
                 navMenu.classList.toggle('active');
             });
-            
-            // Close mobile menu when clicking on a link
-            navMenu.addEventListener('click', (e) => {
-                if (e.target.classList.contains('nav-link')) {
-                    mobileToggle.classList.remove('active');
-                    navMenu.classList.remove('active');
-                }
-            });
         }
-    }
-    
-    initScrollEffects() {
-        // Header scroll effect
-        const header = document.getElementById('header');
-        ScrollUtils.onScroll(() => {
-            if (window.scrollY > 100) {
-                header.classList.add('scrolled');
-            } else {
-                header.classList.remove('scrolled');
+        
+        // Modal close on backdrop click
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.classList.remove('active');
+                document.body.style.overflow = '';
             }
         });
         
-        // Animate elements on scroll
-        const observerOptions = {
-            threshold: 0.1,
-            rootMargin: '0px 0px -50px 0px'
+        // Escape key to close modals
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const activeModal = document.querySelector('.modal.active');
+                if (activeModal) {
+                    activeModal.classList.remove('active');
+                    document.body.style.overflow = '';
+                }
+            }
+        });
+    }
+    
+    initTheme() {
+        const savedTheme = localStorage.getItem('phantom_theme') || 'dark';
+        this.setTheme(savedTheme);
+    }
+    
+    setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('phantom_theme', theme);
+        
+        // Update theme toggle icon
+        const themeToggle = document.getElementById('theme-toggle');
+        if (themeToggle) {
+            const icon = themeToggle.querySelector('i');
+            if (icon) {
+                icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            }
+        }
+        
+        // Update particle system theme
+        if (window.phantomParticles) {
+            phantomParticles.updateTheme(theme);
+        }
+    }
+    
+    toggleTheme() {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        this.setTheme(newTheme);
+    }
+    
+    initLanguage() {
+        const savedLang = localStorage.getItem('phantom_language') || 'ru';
+        this.setLanguage(savedLang);
+    }
+    
+    setLanguage(lang) {
+        localStorage.setItem('phantom_language', lang);
+        
+        // Update current language display
+        const currentLangEl = document.getElementById('current-lang');
+        if (currentLangEl) {
+            currentLangEl.textContent = lang.toUpperCase();
+        }
+        
+        // Update all translatable elements
+        this.updateTranslations(lang);
+    }
+    
+    updateTranslations(lang) {
+        // This would be implemented with a proper translation system
+        // For now, we'll keep the Russian interface
+        document.documentElement.lang = lang;
+    }
+    
+    startClock() {
+        const updateClock = () => {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            
+            const clockEl = document.getElementById('live-clock');
+            if (clockEl) {
+                clockEl.textContent = timeString;
+            }
         };
         
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('animate-in');
-                }
-            });
-        }, observerOptions);
-        
-        // Observe cards and sections
-        document.querySelectorAll('.card, .section-header').forEach(el => {
-            observer.observe(el);
-        });
+        updateClock();
+        setInterval(updateClock, 1000);
     }
     
-    initCounterAnimations() {
-        const counters = document.querySelectorAll('.stat-number[data-count]');
-        const counterObserver = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const target = parseInt(entry.target.dataset.count);
-                    AnimationUtils.animateCounter(entry.target, target);
-                    counterObserver.unobserve(entry.target);
-                }
-            });
-        });
-        
-        counters.forEach(counter => {
-            counterObserver.observe(counter);
-        });
-    }
-    
-    navigateToSection(section) {
-        this.currentSection = section;
-        ScrollUtils.scrollToSection(section);
-        this.updateActiveNavigation();
-    }
-    
-    updateActiveNavigation() {
-        const sections = ['home', 'services', 'programs', 'news', 'cabinet'];
-        let activeSection = 'home';
-        
-        sections.forEach(section => {
-            const element = document.getElementById(section);
-            if (element) {
-                const rect = element.getBoundingClientRect();
-                if (rect.top <= 100 && rect.bottom >= 100) {
-                    activeSection = section;
-                }
-            }
-        });
-        
-        // Update navigation
-        document.querySelectorAll('.nav-link').forEach(link => {
-            link.classList.remove('active');
-            if (link.getAttribute('href') === `#${activeSection}`) {
-                link.classList.add('active');
-            }
-        });
-    }
-    
-    async loadData() {
-        try {
-            // Load services, programs, and news in parallel
-            const [services, programs, news] = await Promise.all([
-                api.getServices().catch(() => []),
-                api.getPrograms().catch(() => []),
-                api.getNews().catch(() => [])
-            ]);
-            
-            this.services = services;
-            this.programs = programs;
-            this.news = news;
-            
-            this.renderServices();
-            this.renderPrograms();
-            this.renderNews();
-            
-        } catch (error) {
-            console.error('Failed to load data:', error);
-            showNotification('Ошибка загрузки данных', 'error');
+    hidePreloader() {
+        const preloader = document.getElementById('preloader');
+        if (preloader) {
+            preloader.style.opacity = '0';
+            setTimeout(() => {
+                preloader.style.display = 'none';
+            }, 500);
         }
     }
     
-    renderServices() {
-        const servicesGrid = document.getElementById('services-grid');
-        if (!servicesGrid) return;
+    // Chat functionality
+    sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        const message = input.value.trim();
         
-        if (this.services.length === 0) {
-            servicesGrid.innerHTML = '<p>Услуги временно недоступны</p>';
-            return;
-        }
+        if (!message) return;
         
-        servicesGrid.innerHTML = this.services.map(service => `
-            <div class="card service-card">
-                <div class="card-icon">
-                    <i class="${service.icon || 'fas fa-cog'}"></i>
-                </div>
-                <h3 class="card-title">${service.name}</h3>
-                <p class="card-description">${service.description}</p>
-                <div class="card-meta">
-                    <span class="card-price">${service.price} UAH</span>
-                    <span class="service-duration">${service.duration || '1-2 дня'}</span>
-                </div>
-                <div class="card-actions">
-                    <button class="btn btn-primary order-service-btn" data-service-id="${service.service_id}">
-                        <i class="fas fa-shopping-cart"></i>
-                        Заказать
-                    </button>
-                </div>
+        const messagesContainer = document.getElementById('chat-messages');
+        
+        // Add user message
+        const userMessage = document.createElement('div');
+        userMessage.className = 'chat-message user';
+        userMessage.innerHTML = `
+            <div class="message-avatar">
+                <img src="${authManager.currentUser?.avatar_url || 'static/images/default-avatar.png'}" alt="User">
             </div>
-        `).join('');
-    }
-    
-    renderPrograms() {
-        const programsGrid = document.getElementById('programs-grid');
-        if (!programsGrid) return;
-        
-        if (this.programs.length === 0) {
-            programsGrid.innerHTML = '<p>Программы скоро появятся</p>';
-            return;
-        }
-        
-        programsGrid.innerHTML = this.programs.map(program => `
-            <div class="card program-card">
-                <div class="card-icon">
-                    ${program.icon || '<i class="fas fa-code"></i>'}
-                </div>
-                <h3 class="card-title">${program.name}</h3>
-                <p class="card-description">${program.description}</p>
-                <div class="program-meta">
-                    <span class="program-language">${program.language || 'Python'}</span>
-                    <span class="program-version">v${program.version || '1.0'}</span>
-                </div>
-                <div class="card-actions">
-                    <button class="btn btn-primary download-program-btn" data-program-id="${program.program_id}">
-                        <i class="fas fa-download"></i>
-                        Скачать
-                    </button>
-                    <button class="btn btn-outline" onclick="this.showProgramDetails(${program.program_id})">
-                        <i class="fas fa-info-circle"></i>
-                        Подробнее
-                    </button>
-                </div>
-            </div>
-        `).join('');
-    }
-    
-    renderNews() {
-        const newsGrid = document.getElementById('news-grid');
-        if (!newsGrid) return;
-        
-        if (this.news.length === 0) {
-            newsGrid.innerHTML = '<p>Новостей пока нет</p>';
-            return;
-        }
-        
-        newsGrid.innerHTML = this.news.map(newsItem => `
-            <div class="card news-card">
-                <div class="news-date">
-                    ${new Date(newsItem.created_at).toLocaleDateString()}
-                </div>
-                <h3 class="card-title">${newsItem.title}</h3>
-                <p class="card-description">${this.truncateText(newsItem.content, 150)}</p>
-                <div class="card-actions">
-                    <button class="btn btn-outline" onclick="app.showNewsDetails(${newsItem.news_id})">
-                        <i class="fas fa-eye"></i>
-                        Читать далее
-                    </button>
-                </div>
-            </div>
-        `).join('');
-    }
-    
-    async openOrderModal(serviceId) {
-        if (!authManager.requireAuth()) {
-            return;
-        }
-        
-        const service = this.services.find(s => s.service_id == serviceId);
-        if (!service) {
-            showNotification('Услуга не найдена', 'error');
-            return;
-        }
-        
-        const modalBody = document.getElementById('order-modal-body');
-        modalBody.innerHTML = `
-            <form id="order-form">
-                <div class="service-info">
-                    <h4>${service.name}</h4>
-                    <p>${service.description}</p>
-                    <div class="service-price">Цена: <strong>${service.price} UAH</strong></div>
-                </div>
-                
-                <div class="form-group">
-                    <label>Дополнительные комментарии</label>
-                    <textarea id="order-comments" rows="3" placeholder="Опишите детали заказа..."></textarea>
-                </div>
-                
-                <div class="payment-section">
-                    <h5>Оплата</h5>
-                    <p>Переведите <strong>${service.price} UAH</strong> на карту ПриватБанк:</p>
-                    <div class="card-number">
-                        <input type="text" value="4149 6090 1876 9549" readonly>
-                        <button type="button" class="btn btn-outline btn-small" onclick="this.copyCardNumber()">
-                            <i class="fas fa-copy"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label>Скриншот оплаты *</label>
-                    <input type="file" id="payment-proof" accept="image/*" required>
-                    <small>Загрузите скриншот подтверждения перевода</small>
-                </div>
-                
-                <input type="hidden" id="service-id" value="${serviceId}">
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-outline" onclick="closeModal('order-modal')">
-                        Отмена
-                    </button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-check"></i>
-                        Оформить заказ
-                    </button>
-                </div>
-            </form>
-        `;
-        
-        // Bind form events
-        const orderForm = document.getElementById('order-form');
-        orderForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.submitOrder();
-        });
-        
-        openModal('order-modal');
-    }
-    
-    async submitOrder() {
-        const serviceId = document.getElementById('service-id').value;
-        const comments = document.getElementById('order-comments').value;
-        const paymentProof = document.getElementById('payment-proof').files[0];
-        
-        if (!paymentProof) {
-            showNotification('Загрузите скриншот оплаты', 'error');
-            return;
-        }
-        
-        // Validate file
-        if (!FileUtils.validateFileType(paymentProof, ['image/jpeg', 'image/jpg', 'image/png'])) {
-            showNotification('Загрузите изображение в формате JPG или PNG', 'error');
-            return;
-        }
-        
-        if (!FileUtils.validateFileSize(paymentProof, 5 * 1024 * 1024)) { // 5MB
-            showNotification('Размер файла не должен превышать 5MB', 'error');
-            return;
-        }
-        
-        try {
-            loadingManager.show('order-submit');
-            
-            const orderData = {
-                service_id: serviceId,
-                comments: comments,
-                payment_proof: paymentProof
-            };
-            
-            const result = await api.createOrder(orderData);
-            
-            closeModal('order-modal');
-            showNotification('Заказ успешно оформлен! Ожидайте подтверждения.', 'success');
-            
-            // Download receipt
-            this.downloadReceipt(result.receipt_data);
-            
-            // Refresh user orders if cabinet is open
-            if (authManager.isLoggedIn()) {
-                authManager.loadUserOrders();
-            }
-            
-        } catch (error) {
-            showNotification(error.message || 'Ошибка оформления заказа', 'error');
-        } finally {
-            loadingManager.hide('order-submit');
-        }
-    }
-    
-    async downloadProgram(programId) {
-        const program = this.programs.find(p => p.program_id == programId);
-        if (!program) {
-            showNotification('Программа не найдена', 'error');
-            return;
-        }
-        
-        try {
-            loadingManager.show('program-download');
-            
-            const blob = await api.downloadProgram(programId);
-            
-            // Create download link
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${program.name}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-            
-            showNotification('Загрузка началась', 'success');
-            
-        } catch (error) {
-            showNotification(error.message || 'Ошибка загрузки программы', 'error');
-        } finally {
-            loadingManager.hide('program-download');
-        }
-    }
-    
-    showNewsDetails(newsId) {
-        const newsItem = this.news.find(n => n.news_id == newsId);
-        if (!newsItem) return;
-        
-        // Create news modal
-        const modal = document.createElement('div');
-        modal.className = 'modal';
-        modal.id = 'news-modal';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>${newsItem.title}</h3>
-                    <button class="modal-close" onclick="closeModal('news-modal')">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <div class="news-meta">
-                        <span>Дата: ${new Date(newsItem.created_at).toLocaleDateString()}</span>
-                    </div>
-                    <div class="news-content">
-                        ${this.parseMarkdown(newsItem.content)}
-                    </div>
-                </div>
+            <div class="message-content">
+                <div class="message-text">${message}</div>
+                <div class="message-time">${new Date().toLocaleTimeString()}</div>
             </div>
         `;
         
-        document.body.appendChild(modal);
-        openModal('news-modal');
+        messagesContainer.appendChild(userMessage);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
         
-        // Remove modal after closing
-        modal.addEventListener('transitionend', () => {
-            if (!modal.classList.contains('active')) {
-                document.body.removeChild(modal);
-            }
-        });
-    }
-    
-    downloadReceipt(receiptData) {
-        const content = this.generateReceiptText(receiptData);
-        const blob = new Blob([content], { type: 'text/plain' });
-        const url = window.URL.createObjectURL(blob);
+        input.value = '';
         
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `receipt_${receiptData.receipt_id}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-    }
-    
-    generateReceiptText(data) {
-        return `
-PANKRATOV TECH
-Чек об оформлении заказа
-
-========================================
-Чек ID: ${data.receipt_id}
-Тип чека: Оформление заказа
-========================================
-
-Дата: ${new Date().toLocaleString()}
-Заказ №: ${data.order_id}
-Клиент: ${data.user_name}
-Email: ${data.user_email}
-
-Услуга: ${data.service_name}
-Цена: ${data.price} UAH
-
-Статус: Ожидает подтверждения оплаты
-
-========================================
-Спасибо за ваш заказ!
-Pankratov Tech - Профессиональные IT-услуги
-        `;
+        // Simulate admin response
+        setTimeout(() => {
+            const adminMessage = document.createElement('div');
+            adminMessage.className = 'chat-message admin';
+            adminMessage.innerHTML = `
+                <div class="message-avatar">👻</div>
+                <div class="message-content">
+                    <div class="message-text">Спасибо за ваше сообщение! Администратор ответит в ближайшее время.</div>
+                    <div class="message-time">${new Date().toLocaleTimeString()}</div>
+                </div>
+            `;
+            
+            messagesContainer.appendChild(adminMessage);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }, 1000);
     }
     
     // Utility methods
+    formatPrice(price, currency = 'UAH') {
+        return new Intl.NumberFormat('ru-RU', {
+            style: 'currency',
+            currency: currency === 'UAH' ? 'UAH' : 'USD'
+        }).format(price);
+    }
+    
+    formatDate(date) {
+        return new Date(date).toLocaleDateString('ru-RU', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    }
+    
     truncateText(text, length) {
         if (text.length <= length) return text;
         return text.substring(0, length) + '...';
     }
-    
-    parseMarkdown(text) {
-        // Simple markdown parser
-        return text
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/\n/g, '<br>');
+}
+
+// Global functions
+function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
     }
-    
-    copyCardNumber() {
-        const cardInput = document.querySelector('.card-number input');
-        cardInput.select();
-        document.execCommand('copy');
-        showNotification('Номер карты скопирован', 'success');
+}
+
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+function showNotification(message, type = 'info', duration = 5000) {
+    if (notificationManager) {
+        return notificationManager.show(message, type, duration);
+    }
+    console.log(`${type.toUpperCase()}: ${message}`);
+}
+
+function sendChatMessage() {
+    if (window.app) {
+        app.sendChatMessage();
     }
 }
 
 // Initialize app
 let app;
 document.addEventListener('DOMContentLoaded', () => {
-    app = new PankratovTechApp();
+    app = new PhantomApp();
 });
 
-// Global functions
 window.app = app;

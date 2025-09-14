@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pankratov Tech - Flask Server
+Phantom Services - Flask Server
 Professional IT Services Platform
 """
 
@@ -18,7 +18,7 @@ from functools import wraps
 from pathlib import Path
 
 import requests
-from flask import Flask, request, jsonify, send_from_directory, g
+from flask import Flask, request, jsonify, send_from_directory, g, render_template_string
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -39,20 +39,29 @@ logger = logging.getLogger(__name__)
 
 # Flask app configuration
 app = Flask(__name__, static_folder='static', static_url_path='/static')
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'pankratov-tech-secret-key-2025')
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'phantom-services-secret-key-2025')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # CORS configuration
 CORS(app, origins=['*'])
 
 # Constants
-DATABASE_FILE = 'pankratov_tech.db'
+DATABASE_FILE = 'phantom_services.db'
 UPLOADS_FOLDER = 'uploads'
 GOOGLE_CLIENT_ID = '957687109285-gs24ojtjhjkatpi7n0rrpb1c57tf95e2.apps.googleusercontent.com'
+ADMIN_EMAILS = ['admin_phantom2000@phantom.com', 'aishchnko12@gmail.com']
+
+# Crypto wallet addresses
+CRYPTO_WALLETS = {
+    'uah': '4149 6090 1876 9549',  # PrivatBank card
+    'ton': 'UQCKtm0RoDtPCyObq18G-FKehsDPaVIiVX5Z8q78P_XfmTUh',
+    'usdt': 'TYourUSDTAddressHere'  # Replace with your USDT TRC20 address
+}
 
 # Ensure directories exist
 os.makedirs('logs', exist_ok=True)
 os.makedirs(UPLOADS_FOLDER, exist_ok=True)
+os.makedirs('static/images', exist_ok=True)
 
 # Database setup
 def get_db():
@@ -148,6 +157,7 @@ def init_database():
             service_id INTEGER NOT NULL,
             comments TEXT,
             price DECIMAL(10,2) NOT NULL,
+            payment_method TEXT NOT NULL,
             status TEXT DEFAULT 'pending',
             payment_proof_path TEXT,
             admin_comment TEXT,
@@ -158,28 +168,27 @@ def init_database():
         )
     ''')
     
-    # Receipts table
+    # Chat messages table
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS receipts (
-            receipt_id TEXT PRIMARY KEY,
-            order_id INTEGER NOT NULL,
-            receipt_type TEXT NOT NULL,
-            content TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            is_admin_reply BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (order_id) REFERENCES orders (order_id)
+            FOREIGN KEY (user_id) REFERENCES users (user_id)
         )
     ''')
     
-    # Notifications table
+    # Downloads table
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS notifications (
-            notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS downloads (
+            download_id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            message TEXT NOT NULL,
-            is_read BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (user_id)
+            program_id INTEGER NOT NULL,
+            download_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (user_id),
+            FOREIGN KEY (program_id) REFERENCES programs (program_id)
         )
     ''')
     
@@ -200,14 +209,16 @@ def init_database():
             VALUES (?, ?, ?, ?, ?)
         ''', default_services)
     
-    # Create admin user if not exists
-    cursor.execute('SELECT COUNT(*) FROM users WHERE is_admin = TRUE')
-    if cursor.fetchone()[0] == 0:
-        admin_id = generate_id(8)
-        cursor.execute('''
-            INSERT INTO users (user_id, name, email, password_hash, is_admin)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (admin_id, 'Admin', 'admin@pankratov.tech', generate_password_hash('admin123'), True))
+    # Create admin users if not exist
+    for email in ADMIN_EMAILS:
+        cursor.execute('SELECT COUNT(*) FROM users WHERE email = ?', (email,))
+        if cursor.fetchone()[0] == 0:
+            admin_id = generate_id(8)
+            password_hash = generate_password_hash('phandmin2000_pwd' if 'phantom' in email else 'admin123')
+            cursor.execute('''
+                INSERT INTO users (user_id, name, email, password_hash, is_admin)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (admin_id, 'Admin', email, password_hash, True))
     
     conn.commit()
     conn.close()
@@ -217,10 +228,6 @@ def init_database():
 def generate_id(length):
     """Generate random numeric ID"""
     return int(''.join([str(secrets.randbelow(10)) for _ in range(length)]))
-
-def generate_receipt_id():
-    """Generate 16-digit receipt ID"""
-    return ''.join([str(secrets.randbelow(10)) for _ in range(16)])
 
 def generate_filename(user_name, service_name, file_extension):
     """Generate unique filename for uploads"""
@@ -277,11 +284,11 @@ def admin_required(f):
         
         db = get_db()
         user = db.execute(
-            'SELECT is_admin FROM users WHERE user_id = ?',
+            'SELECT is_admin, email FROM users WHERE user_id = ?',
             (g.current_user_id,)
         ).fetchone()
         
-        if not user or not user['is_admin']:
+        if not user or (not user['is_admin'] and user['email'] not in ADMIN_EMAILS):
             return jsonify({'error': 'Admin access required'}), 403
         
         return f(*args, **kwargs)
@@ -294,14 +301,47 @@ def index():
     """Serve main page"""
     return send_from_directory('.', 'index.html')
 
+@app.route('/<path:path>')
+def serve_spa(path):
+    """Serve SPA for all routes"""
+    # Check if it's a static file
+    if path.startswith('static/') or '.' in path:
+        try:
+            return send_from_directory('.', path)
+        except:
+            return send_from_directory('.', 'index.html')
+    
+    # Serve main page for SPA routes
+    return send_from_directory('.', 'index.html')
+
 @app.route('/health')
 def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
+        'service': 'Phantom Services',
         'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0'
+        'version': '2.0.0'
     })
+
+@app.route('/api/status')
+def system_status():
+    """System status endpoint"""
+    try:
+        db = get_db()
+        user_count = db.execute('SELECT COUNT(*) as count FROM users').fetchone()['count']
+        order_count = db.execute('SELECT COUNT(*) as count FROM orders').fetchone()['count']
+        
+        return jsonify({
+            'status': 'online',
+            'users': user_count,
+            'orders': order_count,
+            'uptime': time.time(),
+            'crypto_wallets': CRYPTO_WALLETS
+        })
+    except Exception as e:
+        logger.error(f"Status check error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # Authentication routes
 @app.route('/api/auth/register', methods=['POST'])
@@ -329,11 +369,12 @@ def register():
         # Create new user
         user_id = generate_id(8)
         password_hash = generate_password_hash(data['password'])
+        is_admin = data['email'] in ADMIN_EMAILS
         
         db.execute('''
-            INSERT INTO users (user_id, name, email, phone, country, password_hash)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, data['name'], data['email'], data.get('phone'), data['country'], password_hash))
+            INSERT INTO users (user_id, name, email, phone, country, password_hash, is_admin)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, data['name'], data['email'], data.get('phone'), data['country'], password_hash, is_admin))
         
         db.commit()
         
@@ -342,13 +383,16 @@ def register():
         
         # Get user data
         user = db.execute(
-            'SELECT user_id, name, email, phone, country, is_admin, created_at FROM users WHERE user_id = ?',
+            'SELECT user_id, name, email, phone, country, is_admin, avatar_url, created_at FROM users WHERE user_id = ?',
             (user_id,)
         ).fetchone()
         
+        user_data = dict(user)
+        user_data['orders_count'] = 0
+        
         return jsonify({
             'token': token,
-            'user': dict(user)
+            'user': user_data
         })
         
     except Exception as e:
@@ -375,6 +419,15 @@ def login():
         if not user or not check_password_hash(user['password_hash'], password):
             return jsonify({'error': 'Invalid credentials'}), 401
         
+        # Update admin status if needed
+        is_admin = email in ADMIN_EMAILS
+        if is_admin != user['is_admin']:
+            db.execute(
+                'UPDATE users SET is_admin = ? WHERE user_id = ?',
+                (is_admin, user['user_id'])
+            )
+            db.commit()
+        
         # Generate token
         token = generate_token(user['user_id'])
         
@@ -393,6 +446,7 @@ def login():
         
         user_data = dict(user)
         user_data['orders_count'] = orders_count
+        user_data['is_admin'] = is_admin
         del user_data['password_hash']  # Remove sensitive data
         
         return jsonify({
@@ -437,20 +491,22 @@ def google_login():
             (email, google_id)
         ).fetchone()
         
+        is_admin = email in ADMIN_EMAILS
+        
         if user:
             # Update existing user
             db.execute('''
-                UPDATE users SET google_id = ?, avatar_url = ?, updated_at = CURRENT_TIMESTAMP
+                UPDATE users SET google_id = ?, avatar_url = ?, is_admin = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = ?
-            ''', (google_id, avatar_url, user['user_id']))
+            ''', (google_id, avatar_url, is_admin, user['user_id']))
             user_id = user['user_id']
         else:
             # Create new user
             user_id = generate_id(8)
             db.execute('''
-                INSERT INTO users (user_id, name, email, google_id, avatar_url)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (user_id, name, email, google_id, avatar_url))
+                INSERT INTO users (user_id, name, email, google_id, avatar_url, is_admin)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (user_id, name, email, google_id, avatar_url, is_admin))
         
         db.commit()
         
@@ -495,6 +551,9 @@ def get_current_user():
         if not user:
             return jsonify({'error': 'User not found'}), 404
         
+        # Check admin status
+        is_admin = user['email'] in ADMIN_EMAILS if user['email'] else user['is_admin']
+        
         # Get orders count
         orders_count = db.execute(
             'SELECT COUNT(*) as count FROM orders WHERE user_id = ?',
@@ -503,6 +562,7 @@ def get_current_user():
         
         user_data = dict(user)
         user_data['orders_count'] = orders_count
+        user_data['is_admin'] = is_admin
         
         return jsonify(user_data)
         
@@ -514,7 +574,6 @@ def get_current_user():
 @auth_required
 def logout():
     """User logout"""
-    # In a real app, you might want to blacklist the token
     return jsonify({'message': 'Logged out successfully'})
 
 # Services routes
@@ -533,25 +592,6 @@ def get_services():
         logger.error(f"Get services error: {e}")
         return jsonify({'error': 'Failed to get services'}), 500
 
-@app.route('/api/services/<int:service_id>', methods=['GET'])
-def get_service(service_id):
-    """Get specific service"""
-    try:
-        db = get_db()
-        service = db.execute(
-            'SELECT * FROM services WHERE service_id = ? AND is_active = TRUE',
-            (service_id,)
-        ).fetchone()
-        
-        if not service:
-            return jsonify({'error': 'Service not found'}), 404
-        
-        return jsonify(dict(service))
-        
-    except Exception as e:
-        logger.error(f"Get service error: {e}")
-        return jsonify({'error': 'Failed to get service'}), 500
-
 # Programs routes
 @app.route('/api/programs', methods=['GET'])
 def get_programs():
@@ -567,34 +607,6 @@ def get_programs():
     except Exception as e:
         logger.error(f"Get programs error: {e}")
         return jsonify({'error': 'Failed to get programs'}), 500
-
-@app.route('/api/programs/<int:program_id>/download', methods=['GET'])
-def download_program(program_id):
-    """Download program file"""
-    try:
-        db = get_db()
-        program = db.execute(
-            'SELECT * FROM programs WHERE program_id = ? AND is_active = TRUE',
-            (program_id,)
-        ).fetchone()
-        
-        if not program:
-            return jsonify({'error': 'Program not found'}), 404
-        
-        # Update download count
-        db.execute(
-            'UPDATE programs SET download_count = download_count + 1 WHERE program_id = ?',
-            (program_id,)
-        )
-        db.commit()
-        
-        # In a real app, you would serve the actual file
-        # For now, return a placeholder response
-        return jsonify({'message': 'Download started', 'filename': f"{program['name']}.zip"})
-        
-    except Exception as e:
-        logger.error(f"Download program error: {e}")
-        return jsonify({'error': 'Download failed'}), 500
 
 # News routes
 @app.route('/api/news', methods=['GET'])
@@ -624,9 +636,10 @@ def create_order():
     try:
         service_id = request.form.get('service_id')
         comments = request.form.get('comments', '')
+        payment_method = request.form.get('payment_method')
         
-        if not service_id:
-            return jsonify({'error': 'Service ID required'}), 400
+        if not service_id or not payment_method:
+            return jsonify({'error': 'Service ID and payment method required'}), 400
         
         # Get service info
         db = get_db()
@@ -659,40 +672,25 @@ def create_order():
                 payment_proof_path = filename
         
         # Create order
-        order_id = generate_id(4)
+        order_id = generate_id(6)
         
         db.execute('''
-            INSERT INTO orders (order_id, user_id, service_id, comments, price, payment_proof_path)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (order_id, g.current_user_id, service_id, comments, service['price'], payment_proof_path))
-        
-        # Create receipt
-        receipt_id = generate_receipt_id()
-        receipt_content = generate_receipt_content('order_created', {
-            'receipt_id': receipt_id,
-            'order_id': order_id,
-            'user_name': user['name'],
-            'user_email': user['email'],
-            'service_name': service['name'],
-            'price': service['price']
-        })
-        
-        db.execute('''
-            INSERT INTO receipts (receipt_id, order_id, receipt_type, content)
-            VALUES (?, ?, ?, ?)
-        ''', (receipt_id, order_id, 'order_created', receipt_content))
+            INSERT INTO orders (order_id, user_id, service_id, comments, price, payment_method, payment_proof_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (order_id, g.current_user_id, service_id, comments, service['price'], payment_method, payment_proof_path))
         
         db.commit()
         
         return jsonify({
             'order_id': order_id,
+            'message': 'Order created successfully',
             'receipt_data': {
-                'receipt_id': receipt_id,
                 'order_id': order_id,
                 'user_name': user['name'],
                 'user_email': user['email'],
                 'service_name': service['name'],
-                'price': service['price']
+                'price': service['price'],
+                'payment_method': payment_method
             }
         })
         
@@ -749,27 +747,49 @@ def cancel_order(order_id):
         logger.error(f"Cancel order error: {e}")
         return jsonify({'error': 'Failed to cancel order'}), 500
 
-# User profile routes
-@app.route('/api/user/profile', methods=['PUT'])
+# Chat routes
+@app.route('/api/chat/messages', methods=['GET'])
 @auth_required
-def update_profile():
-    """Update user profile"""
+def get_chat_messages():
+    """Get chat messages for user"""
+    try:
+        db = get_db()
+        messages = db.execute('''
+            SELECT * FROM chat_messages 
+            WHERE user_id = ? 
+            ORDER BY created_at ASC
+        ''', (g.current_user_id,)).fetchall()
+        
+        return jsonify([dict(message) for message in messages])
+        
+    except Exception as e:
+        logger.error(f"Get chat messages error: {e}")
+        return jsonify({'error': 'Failed to get messages'}), 500
+
+@app.route('/api/chat/send', methods=['POST'])
+@auth_required
+def send_chat_message():
+    """Send chat message"""
     try:
         data = request.get_json()
+        message = data.get('message', '').strip()
+        
+        if not message:
+            return jsonify({'error': 'Message required'}), 400
         
         db = get_db()
         db.execute('''
-            UPDATE users SET name = ?, phone = ?, country = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ?
-        ''', (data.get('name'), data.get('phone'), data.get('country'), g.current_user_id))
+            INSERT INTO chat_messages (user_id, message)
+            VALUES (?, ?)
+        ''', (g.current_user_id, message))
         
         db.commit()
         
-        return jsonify({'message': 'Profile updated successfully'})
+        return jsonify({'message': 'Message sent successfully'})
         
     except Exception as e:
-        logger.error(f"Update profile error: {e}")
-        return jsonify({'error': 'Failed to update profile'}), 500
+        logger.error(f"Send chat message error: {e}")
+        return jsonify({'error': 'Failed to send message'}), 500
 
 # Admin routes
 @app.route('/api/admin/stats', methods=['GET'])
@@ -824,46 +844,11 @@ def approve_order(order_id):
     try:
         db = get_db()
         
-        # Get order details
-        order = db.execute('''
-            SELECT o.*, s.name as service_name, u.name as user_name, u.email as user_email
-            FROM orders o
-            JOIN services s ON o.service_id = s.service_id
-            JOIN users u ON o.user_id = u.user_id
-            WHERE o.order_id = ?
-        ''', (order_id,)).fetchone()
-        
-        if not order:
-            return jsonify({'error': 'Order not found'}), 404
-        
         # Update order status
         db.execute(
             'UPDATE orders SET status = "approved", updated_at = CURRENT_TIMESTAMP WHERE order_id = ?',
             (order_id,)
         )
-        
-        # Create approval receipt
-        receipt_id = generate_receipt_id()
-        receipt_content = generate_receipt_content('order_approved', {
-            'receipt_id': receipt_id,
-            'order_id': order_id,
-            'user_name': order['user_name'],
-            'user_email': order['user_email'],
-            'service_name': order['service_name'],
-            'price': order['price']
-        })
-        
-        db.execute('''
-            INSERT INTO receipts (receipt_id, order_id, receipt_type, content)
-            VALUES (?, ?, ?, ?)
-        ''', (receipt_id, order_id, 'order_approved', receipt_content))
-        
-        # Create notification for user
-        db.execute('''
-            INSERT INTO notifications (user_id, title, message)
-            VALUES (?, ?, ?)
-        ''', (order['user_id'], 'Заказ одобрен', f'Ваш заказ #{order_id} был одобрен и принят в работу.'))
-        
         db.commit()
         
         return jsonify({'message': 'Order approved successfully'})
@@ -883,47 +868,11 @@ def reject_order(order_id):
         
         db = get_db()
         
-        # Get order details
-        order = db.execute('''
-            SELECT o.*, s.name as service_name, u.name as user_name, u.email as user_email
-            FROM orders o
-            JOIN services s ON o.service_id = s.service_id
-            JOIN users u ON o.user_id = u.user_id
-            WHERE o.order_id = ?
-        ''', (order_id,)).fetchone()
-        
-        if not order:
-            return jsonify({'error': 'Order not found'}), 404
-        
         # Update order status
         db.execute(
             'UPDATE orders SET status = "rejected", admin_comment = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?',
             (reason, order_id)
         )
-        
-        # Create rejection receipt
-        receipt_id = generate_receipt_id()
-        receipt_content = generate_receipt_content('order_rejected', {
-            'receipt_id': receipt_id,
-            'order_id': order_id,
-            'user_name': order['user_name'],
-            'user_email': order['user_email'],
-            'service_name': order['service_name'],
-            'price': order['price'],
-            'reason': reason
-        })
-        
-        db.execute('''
-            INSERT INTO receipts (receipt_id, order_id, receipt_type, content)
-            VALUES (?, ?, ?, ?)
-        ''', (receipt_id, order_id, 'order_rejected', receipt_content))
-        
-        # Create notification for user
-        db.execute('''
-            INSERT INTO notifications (user_id, title, message)
-            VALUES (?, ?, ?)
-        ''', (order['user_id'], 'Заказ отклонен', f'Ваш заказ #{order_id} был отклонен. Причина: {reason}. Свяжитесь с администратором для выяснения деталей.'))
-        
         db.commit()
         
         return jsonify({'message': 'Order rejected successfully'})
@@ -1015,92 +964,12 @@ def delete_news(news_id):
         logger.error(f"Delete news error: {e}")
         return jsonify({'error': 'Failed to delete news'}), 500
 
-# Utility functions
-def generate_receipt_content(receipt_type, data):
-    """Generate receipt content"""
-    templates = {
-        'order_created': f"""
-PANKRATOV TECH
-Чек об оформлении заказа
-
-========================================
-Чек ID: {data['receipt_id']}
-Тип чека: Оформление заказа
-========================================
-
-Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}
-Заказ №: {data['order_id']}
-Клиент: {data['user_name']}
-Email: {data['user_email']}
-
-Услуга: {data['service_name']}
-Цена: {data['price']} UAH
-
-Статус: Ожидает подтверждения оплаты
-
-========================================
-Спасибо за ваш заказ!
-Pankratov Tech - Профессиональные IT-услуги
-        """,
-        
-        'order_approved': f"""
-PANKRATOV TECH
-Чек об одобрении заказа
-
-========================================
-Чек ID: {data['receipt_id']}
-Тип чека: Одобрение заказа
-========================================
-
-Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}
-Заказ №: {data['order_id']}
-Клиент: {data['user_name']}
-Email: {data['user_email']}
-
-Услуга: {data['service_name']}
-Цена: {data['price']} UAH
-
-Статус: ОДОБРЕН - Принят в работу
-
-========================================
-Ваш заказ одобрен и будет выполнен в ближайшее время.
-Pankratov Tech - Профессиональные IT-услуги
-        """,
-        
-        'order_rejected': f"""
-PANKRATOV TECH
-Чек об отклонении заказа
-
-========================================
-Чек ID: {data['receipt_id']}
-Тип чека: Отклонение заказа
-========================================
-
-Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}
-Заказ №: {data['order_id']}
-Клиент: {data['user_name']}
-Email: {data['user_email']}
-
-Услуга: {data['service_name']}
-Цена: {data['price']} UAH
-
-Статус: ОТКЛОНЕН
-Причина: {data.get('reason', 'Не указана')}
-
-========================================
-Для выяснения причин свяжитесь с администратором.
-Pankratov Tech - Профессиональные IT-услуги
-        """
-    }
-    
-    return templates.get(receipt_type, 'Unknown receipt type')
-
 # Self-ping function to keep server alive
 def ping_self():
     """Ping server to keep it alive"""
     while True:
         try:
-            time.sleep(60)  # Ping every minute
+            time.sleep(30)  # Ping every 30 seconds
             requests.get(f'http://localhost:{os.getenv("PORT", 5000)}/health', timeout=10)
             logger.info("Self-ping successful")
         except Exception as e:
@@ -1109,7 +978,8 @@ def ping_self():
 # Error handlers
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
+    # For SPA, return the main page
+    return send_from_directory('.', 'index.html')
 
 @app.errorhandler(500)
 def internal_error(error):
@@ -1127,7 +997,7 @@ if __name__ == '__main__':
     # Get port from environment
     port = int(os.getenv('PORT', 5000))
     
-    logger.info(f"🚀 Pankratov Tech server starting on port {port}")
+    logger.info(f"🚀 Phantom Services server starting on port {port}")
     
     # Run the app
     app.run(
