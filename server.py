@@ -343,35 +343,66 @@ def verify_token(token):
 def auth_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            return jsonify({'error': 'Token required'}), 401
-        
-        if token.startswith('Bearer '):
-            token = token[7:]
-        
-        user_id = verify_token(token)
-        if not user_id:
-            return jsonify({'error': 'Invalid token'}), 401
-        
-        g.current_user_id = str(user_id)
-        return f(*args, **kwargs)
+        try:
+            token = request.headers.get('Authorization')
+            if not token:
+                return jsonify({'error': 'Authorization token required'}), 401
+            
+            if token.startswith('Bearer '):
+                token = token[7:]
+            elif token.startswith('bearer '):
+                token = token[7:]
+            
+            if not token:
+                return jsonify({'error': 'Invalid authorization format'}), 401
+            
+            user_id = verify_token(token)
+            if not user_id:
+                return jsonify({'error': 'Invalid or expired token'}), 401
+            
+            # Verify user still exists
+            try:
+                users = read_csv_table('users')
+                user = next((u for u in users if u['user_id'] == str(user_id)), None)
+                if not user:
+                    return jsonify({'error': 'User not found'}), 401
+            except Exception as e:
+                logger.error(f"User verification error: {e}")
+                return jsonify({'error': 'Authentication error'}), 500
+            
+            g.current_user_id = str(user_id)
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            logger.error(f"Auth decorator error: {e}")
+            return jsonify({'error': 'Authentication failed'}), 401
     
     return decorated_function
 
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not hasattr(g, 'current_user_id'):
-            return jsonify({'error': 'Authentication required'}), 401
-        
-        users = read_csv_table('users')
-        user = next((u for u in users if u['user_id'] == g.current_user_id), None)
-        
-        if not user or (user['is_admin'] != 'True' and user['email'] not in ADMIN_EMAILS):
-            return jsonify({'error': 'Admin access required'}), 403
-        
-        return f(*args, **kwargs)
+        try:
+            if not hasattr(g, 'current_user_id'):
+                return jsonify({'error': 'Authentication required'}), 401
+            
+            users = read_csv_table('users')
+            user = next((u for u in users if u['user_id'] == g.current_user_id), None)
+            
+            if not user:
+                return jsonify({'error': 'User not found'}), 401
+                
+            is_admin = (user.get('is_admin') == 'True' or 
+                       user.get('email') in ADMIN_EMAILS)
+            
+            if not is_admin:
+                return jsonify({'error': 'Admin access required'}), 403
+            
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            logger.error(f"Admin decorator error: {e}")
+            return jsonify({'error': 'Authorization failed'}), 500
     
     return decorated_function
 
@@ -440,7 +471,7 @@ def google_callback():
     """Handle Google OAuth callback"""
     code = request.args.get('code')
     if not code:
-        return redirect('/?error=google_auth_failed')
+        return redirect('/google-auth-callback.html?error=google_auth_failed')
     
     try:
         # Exchange code for token
@@ -457,7 +488,7 @@ def google_callback():
         token_json = token_response.json()
         
         if 'access_token' not in token_json:
-            return redirect('/?error=google_token_failed')
+            return redirect('/google-auth-callback.html?error=google_token_failed')
         
         # Get user info
         user_info_url = f"https://www.googleapis.com/oauth2/v2/userinfo?access_token={token_json['access_token']}"
@@ -500,12 +531,11 @@ def google_callback():
         # Generate token
         token = generate_token(user_id)
         
-        # Redirect with token
-        return redirect(f'/?token={token}&google_login=success')
+        return redirect(f'/google-auth-callback.html?token={token}&google_login=success')
         
     except Exception as e:
         logger.error(f"Google OAuth error: {e}")
-        return redirect('/?error=google_auth_error')
+        return redirect('/google-auth-callback.html?error=google_auth_error')
 
 # Authentication routes
 @app.route('/api/auth/register', methods=['POST'])
@@ -776,76 +806,133 @@ def get_news():
 def create_order():
     """Create new order"""
     try:
-        service_id = request.form.get('service_id')
-        comments = request.form.get('comments', '')
-        payment_method = request.form.get('payment_method')
+        # Handle both JSON and form data
+        if request.content_type and 'application/json' in request.content_type:
+            data = request.get_json()
+            service_id = data.get('service_id')
+            comments = data.get('comments', '')
+            payment_method = data.get('payment_method')
+            payment_proof = None
+        else:
+            service_id = request.form.get('service_id')
+            comments = request.form.get('comments', '')
+            payment_method = request.form.get('payment_method')
+            payment_proof = request.files.get('payment_proof')
         
-        if not service_id or not payment_method:
-            return jsonify({'error': 'Service ID and payment method required'}), 400
+        # Validate required fields
+        if not service_id:
+            return jsonify({'error': 'Service ID is required'}), 400
+        if not payment_method:
+            return jsonify({'error': 'Payment method is required'}), 400
         
         # Get service info
-        services = read_csv_table('services')
-        service = next((s for s in services if s['service_id'] == service_id), None)
+        try:
+            services = read_csv_table('services')
+        except Exception as e:
+            logger.error(f"Failed to read services: {e}")
+            return jsonify({'error': 'Service data unavailable'}), 500
+            
+        service = next((s for s in services if s['service_id'] == str(service_id)), None)
         
-        if not service or service.get('is_active') != 'True':
+        if not service:
             return jsonify({'error': 'Service not found'}), 404
+        if service.get('is_active') != 'True':
+            return jsonify({'error': 'Service is not available'}), 400
         
         # Get user info
-        users = read_csv_table('users')
+        try:
+            users = read_csv_table('users')
+        except Exception as e:
+            logger.error(f"Failed to read users: {e}")
+            return jsonify({'error': 'User data unavailable'}), 500
+            
         user = next((u for u in users if u['user_id'] == g.current_user_id), None)
         
         if not user:
             return jsonify({'error': 'User not found'}), 404
         
-        # Handle file upload
+        # Handle file upload with better error handling
         payment_proof_path = None
-        if 'payment_proof' in request.files:
-            file = request.files['payment_proof']
-            if file and file.filename:
+        if payment_proof and payment_proof.filename:
+            try:
+                # Validate file type
+                allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+                file_ext = payment_proof.filename.rsplit('.', 1)[1].lower()
+                
+                if file_ext not in allowed_extensions:
+                    return jsonify({'error': 'Invalid file type. Allowed: PNG, JPG, JPEG, GIF, PDF'}), 400
+                
+                # Check file size (max 5MB)
+                if len(payment_proof.read()) > 5 * 1024 * 1024:
+                    return jsonify({'error': 'File too large. Maximum size: 5MB'}), 400
+                
+                payment_proof.seek(0)  # Reset file pointer
+                
                 filename = generate_filename(
                     user['name'],
                     service['name'],
-                    file.filename.rsplit('.', 1)[1].lower()
+                    file_ext
                 )
+                
+                # Ensure uploads directory exists
+                os.makedirs(UPLOADS_FOLDER, exist_ok=True)
+                
                 file_path = os.path.join(UPLOADS_FOLDER, filename)
-                file.save(file_path)
+                payment_proof.save(file_path)
                 payment_proof_path = filename
+                
+            except Exception as e:
+                logger.error(f"File upload error: {e}")
+                return jsonify({'error': 'Failed to upload payment proof'}), 500
         
-        # Create order
-        order_id = str(generate_id(6))
-        
-        new_order = {
-            'order_id': order_id,
-            'user_id': g.current_user_id,
-            'service_id': service_id,
-            'comments': comments,
-            'price': service['price'],
-            'payment_method': payment_method,
-            'status': 'pending',
-            'payment_proof_path': payment_proof_path or '',
-            'admin_comment': '',
-            'created_at': datetime.now().isoformat(),
-            'updated_at': datetime.now().isoformat()
-        }
-        
-        append_csv_table('orders', new_order)
-        
-        return jsonify({
-            'order_id': order_id,
-            'message': 'Order created successfully',
-            'receipt_data': {
+        # Create order with better validation
+        try:
+            order_id = str(generate_id(6))
+            
+            # Validate price is numeric
+            try:
+                price = float(service['price'])
+            except (ValueError, TypeError):
+                return jsonify({'error': 'Invalid service price'}), 500
+            
+            new_order = {
                 'order_id': order_id,
-                'user_name': user['name'],
-                'user_email': user['email'],
-                'service_name': service['name'],
-                'price': float(service['price']),
-                'payment_method': payment_method
+                'user_id': str(g.current_user_id),
+                'service_id': str(service_id),
+                'comments': str(comments)[:1000],  # Limit comment length
+                'price': str(price),
+                'payment_method': str(payment_method),
+                'status': 'pending',
+                'payment_proof_path': payment_proof_path or '',
+                'admin_comment': '',
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat()
             }
-        })
+            
+            append_csv_table('orders', new_order)
+            
+            return jsonify({
+                'success': True,
+                'order_id': order_id,
+                'message': 'Order created successfully',
+                'receipt_data': {
+                    'order_id': order_id,
+                    'user_name': user['name'],
+                    'user_email': user['email'],
+                    'service_name': service['name'],
+                    'price': price,
+                    'payment_method': payment_method,
+                    'created_at': new_order['created_at']
+                }
+            }), 201
+            
+        except Exception as e:
+            logger.error(f"Order creation error: {e}")
+            return jsonify({'error': 'Failed to create order'}), 500
         
     except Exception as e:
         logger.error(f"Create order error: {e}")
-        return jsonify({'error': 'Failed to create order'}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/orders', methods=['GET'])
 @auth_required
