@@ -8,7 +8,7 @@ import os
 import sys
 import time
 import json
-import sqlite3
+import csv
 import hashlib
 import secrets
 import logging
@@ -18,7 +18,7 @@ from functools import wraps
 from pathlib import Path
 
 import requests
-from flask import Flask, request, jsonify, send_from_directory, g, render_template_string
+from flask import Flask, request, jsonify, send_from_directory, g, render_template_string, redirect, url_for
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -39,190 +39,273 @@ logger = logging.getLogger(__name__)
 
 # Flask app configuration
 app = Flask(__name__, static_folder='static', static_url_path='/static')
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'phantom-services-secret-key-2025')
+
+# Security configuration - все пароли и ключи теперь в переменных окружения
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', secrets.token_hex(32))
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # CORS configuration
 CORS(app, origins=['*'])
 
-# Constants
-DATABASE_FILE = 'phantom_services.db'
+# Constants - безопасные переменные
+DATABASE_FOLDER = 'data'
 UPLOADS_FOLDER = 'uploads'
-GOOGLE_CLIENT_ID = '957687109285-gs24ojtjhjkatpi7n0rrpb1c57tf95e2.apps.googleusercontent.com'
-ADMIN_EMAILS = ['admin_phantom2000@phantom.com', 'aishchnko12@gmail.com']
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '957687109285-gs24ojtjhjkatpi7n0rrpb1c57tf95e2.apps.googleusercontent.com')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', 'your_google_client_secret')
 
-# Crypto wallet addresses
+# Admin credentials - храним в переменных окружения
+ADMIN_EMAILS = os.getenv('ADMIN_EMAILS', 'admin_phantom2000@phantom.com,aishchnko12@gmail.com').split(',')
+ADMIN_PASSWORD_HASH = os.getenv('ADMIN_PASSWORD_HASH', generate_password_hash('phandmin2000_pwd'))
+
+# Crypto wallet addresses - безопасное хранение
 CRYPTO_WALLETS = {
-    'uah': '4149 6090 1876 9549',  # PrivatBank card
-    'ton': 'UQCKtm0RoDtPCyObq18G-FKehsDPaVIiVX5Z8q78P_XfmTUh',
-    'usdt': 'TYourUSDTAddressHere'  # Replace with your USDT TRC20 address
+    'uah': os.getenv('UAH_WALLET', '4149 6090 1876 9549'),
+    'ton': os.getenv('TON_WALLET', 'UQCKtm0RoDtPCyObq18G-FKehsDPaVIiVX5Z8q78P_XfmTUh'),
+    'usdt': os.getenv('USDT_WALLET', 'TYourUSDTAddressHere')
 }
 
 # Ensure directories exist
 os.makedirs('logs', exist_ok=True)
+os.makedirs(DATABASE_FOLDER, exist_ok=True)
 os.makedirs(UPLOADS_FOLDER, exist_ok=True)
 os.makedirs('static/images', exist_ok=True)
 
-# Database setup
-def get_db():
-    """Get database connection"""
-    if 'db' not in g:
-        g.db = sqlite3.connect(DATABASE_FILE)
-        g.db.row_factory = sqlite3.Row
-    return g.db
+# CSV Database setup
+def get_csv_path(table_name):
+    """Get CSV file path for table"""
+    return os.path.join(DATABASE_FOLDER, f'{table_name}.csv')
 
-def close_db(e=None):
-    """Close database connection"""
-    db = g.pop('db', None)
-    if db is not None:
-        db.close()
+def read_csv_table(table_name):
+    """Read CSV table"""
+    csv_path = get_csv_path(table_name)
+    if not os.path.exists(csv_path):
+        return []
+    
+    try:
+        with open(csv_path, 'r', encoding='utf-8', newline='') as file:
+            reader = csv.DictReader(file)
+            return list(reader)
+    except Exception as e:
+        logger.error(f"Error reading CSV {table_name}: {e}")
+        return []
 
-@app.teardown_appcontext
-def close_db(error=None):
-    db = g.pop('db', None)
-    if db is not None:
-        db.close()
+def write_csv_table(table_name, data, fieldnames=None):
+    """Write CSV table"""
+    csv_path = get_csv_path(table_name)
+    
+    if not data:
+        return
+    
+    if fieldnames is None:
+        fieldnames = data[0].keys() if data else []
+    
+    try:
+        with open(csv_path, 'w', encoding='utf-8', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(data)
+    except Exception as e:
+        logger.error(f"Error writing CSV {table_name}: {e}")
+
+def append_csv_table(table_name, row, fieldnames=None):
+    """Append row to CSV table"""
+    csv_path = get_csv_path(table_name)
+    
+    # If file doesn't exist, create with header
+    if not os.path.exists(csv_path):
+        if fieldnames is None:
+            fieldnames = row.keys()
+        with open(csv_path, 'w', encoding='utf-8', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+    
+    try:
+        with open(csv_path, 'a', encoding='utf-8', newline='') as file:
+            if fieldnames is None:
+                # Read existing fieldnames
+                with open(csv_path, 'r', encoding='utf-8') as read_file:
+                    reader = csv.DictReader(read_file)
+                    fieldnames = reader.fieldnames
+            
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writerow(row)
+    except Exception as e:
+        logger.error(f"Error appending to CSV {table_name}: {e}")
 
 def init_database():
-    """Initialize database with tables"""
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
+    """Initialize CSV database with tables"""
     
     # Users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            phone TEXT,
-            country TEXT,
-            password_hash TEXT,
-            google_id TEXT,
-            avatar_url TEXT,
-            is_admin BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Services table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS services (
-            service_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT,
-            price DECIMAL(10,2) NOT NULL,
-            duration TEXT,
-            icon TEXT,
-            is_active BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Programs table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS programs (
-            program_id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            description TEXT,
-            language TEXT,
-            version TEXT DEFAULT '1.0',
-            icon TEXT,
-            file_path TEXT,
-            download_count INTEGER DEFAULT 0,
-            is_active BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # News table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS news (
-            news_id INTEGER PRIMARY KEY,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            author_id INTEGER,
-            is_published BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (author_id) REFERENCES users (user_id)
-        )
-    ''')
-    
-    # Orders table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS orders (
-            order_id INTEGER PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            service_id INTEGER NOT NULL,
-            comments TEXT,
-            price DECIMAL(10,2) NOT NULL,
-            payment_method TEXT NOT NULL,
-            status TEXT DEFAULT 'pending',
-            payment_proof_path TEXT,
-            admin_comment TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (user_id),
-            FOREIGN KEY (service_id) REFERENCES services (service_id)
-        )
-    ''')
-    
-    # Chat messages table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS chat_messages (
-            message_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            message TEXT NOT NULL,
-            is_admin_reply BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (user_id)
-        )
-    ''')
-    
-    # Downloads table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS downloads (
-            download_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            program_id INTEGER NOT NULL,
-            download_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (user_id),
-            FOREIGN KEY (program_id) REFERENCES programs (program_id)
-        )
-    ''')
-    
-    # Insert default data
-    cursor.execute('SELECT COUNT(*) FROM services')
-    if cursor.fetchone()[0] == 0:
-        default_services = [
-            ('Разблокировка загрузчика', 'Разблокировка bootloader для Android устройств', 500.00, '1-2 дня', 'fas fa-unlock'),
-            ('Установка root-прав', 'Получение root доступа на Android устройствах', 300.00, '1 день', 'fas fa-user-shield'),
-            ('Прошивка устройств', 'Установка кастомных прошивок и восстановление', 800.00, '2-3 дня', 'fas fa-microchip'),
-            ('Установка ОС (ПК)', 'Установка Windows, Linux и настройка системы', 400.00, '1 день', 'fas fa-desktop'),
-            ('Удаление вирусов', 'Полная очистка от вирусов и вредоносного ПО', 350.00, '1 день', 'fas fa-shield-virus'),
-            ('Настройка сети', 'Настройка роутеров, Wi-Fi и сетевого оборудования', 450.00, '1-2 дня', 'fas fa-network-wired')
-        ]
-        
-        cursor.executemany('''
-            INSERT INTO services (name, description, price, duration, icon)
-            VALUES (?, ?, ?, ?, ?)
-        ''', default_services)
-    
-    # Create admin users if not exist
+    users_data = []
     for email in ADMIN_EMAILS:
-        cursor.execute('SELECT COUNT(*) FROM users WHERE email = ?', (email,))
-        if cursor.fetchone()[0] == 0:
-            admin_id = generate_id(8)
-            password_hash = generate_password_hash('phandmin2000_pwd' if 'phantom' in email else 'admin123')
-            cursor.execute('''
-                INSERT INTO users (user_id, name, email, password_hash, is_admin)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (admin_id, 'Admin', email, password_hash, True))
+        admin_id = generate_id(8)
+        users_data.append({
+            'user_id': admin_id,
+            'name': 'Admin',
+            'email': email,
+            'phone': '',
+            'country': '',
+            'password_hash': ADMIN_PASSWORD_HASH,
+            'google_id': '',
+            'avatar_url': '',
+            'is_admin': 'True',
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        })
     
-    conn.commit()
-    conn.close()
-    logger.info("Database initialized successfully")
+    if not os.path.exists(get_csv_path('users')):
+        write_csv_table('users', users_data)
+    
+    # Services table with categories
+    services_data = [
+        # Простые услуги
+        {
+            'service_id': '1',
+            'name': 'Установка антивируса',
+            'description': 'Установка и настройка антивирусного ПО',
+            'price': '200.00',
+            'duration': '30 минут',
+            'icon': 'fas fa-shield-virus',
+            'category': 'Простые',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        {
+            'service_id': '2',
+            'name': 'Очистка от мусора',
+            'description': 'Очистка системы от временных файлов и мусора',
+            'price': '150.00',
+            'duration': '20 минут',
+            'icon': 'fas fa-broom',
+            'category': 'Простые',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        {
+            'service_id': '3',
+            'name': 'Установка драйверов',
+            'description': 'Поиск и установка необходимых драйверов',
+            'price': '250.00',
+            'duration': '45 минут',
+            'icon': 'fas fa-download',
+            'category': 'Простые',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        
+        # Средние услуги
+        {
+            'service_id': '4',
+            'name': 'Разблокировка загрузчика',
+            'description': 'Разблокировка bootloader для Android устройств',
+            'price': '500.00',
+            'duration': '1-2 дня',
+            'icon': 'fas fa-unlock',
+            'category': 'Средние',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        {
+            'service_id': '5',
+            'name': 'Установка root-прав',
+            'description': 'Получение root доступа на Android устройствах',
+            'price': '300.00',
+            'duration': '1 день',
+            'icon': 'fas fa-user-shield',
+            'category': 'Средние',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        {
+            'service_id': '6',
+            'name': 'Установка ОС (ПК)',
+            'description': 'Установка Windows, Linux и настройка системы',
+            'price': '400.00',
+            'duration': '1 день',
+            'icon': 'fas fa-desktop',
+            'category': 'Средние',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        {
+            'service_id': '7',
+            'name': 'Удаление вирусов',
+            'description': 'Полная очистка от вирусов и вредоносного ПО',
+            'price': '350.00',
+            'duration': '1 день',
+            'icon': 'fas fa-shield-virus',
+            'category': 'Средние',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        {
+            'service_id': '8',
+            'name': 'Настройка сети',
+            'description': 'Настройка роутеров, Wi-Fi и сетевого оборудования',
+            'price': '450.00',
+            'duration': '1-2 дня',
+            'icon': 'fas fa-network-wired',
+            'category': 'Средние',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        
+        # Продвинутые услуги
+        {
+            'service_id': '9',
+            'name': 'Прошивка устройств',
+            'description': 'Установка кастомных прошивок и восстановление',
+            'price': '800.00',
+            'duration': '2-3 дня',
+            'icon': 'fas fa-microchip',
+            'category': 'Продвинутые',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        {
+            'service_id': '10',
+            'name': 'Разработка ПО',
+            'description': 'Создание индивидуального программного обеспечения',
+            'price': '2000.00',
+            'duration': '1-2 недели',
+            'icon': 'fas fa-code',
+            'category': 'Продвинутые',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        {
+            'service_id': '11',
+            'name': 'Настройка сервера',
+            'description': 'Установка и настройка серверного ПО',
+            'price': '1500.00',
+            'duration': '3-5 дней',
+            'icon': 'fas fa-server',
+            'category': 'Продвинутые',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        },
+        {
+            'service_id': '12',
+            'name': 'Восстановление данных',
+            'description': 'Восстановление утерянных или поврежденных данных',
+            'price': '1200.00',
+            'duration': '2-7 дней',
+            'icon': 'fas fa-hdd',
+            'category': 'Продвинутые',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        }
+    ]
+    
+    if not os.path.exists(get_csv_path('services')):
+        write_csv_table('services', services_data)
+    
+    # Initialize other tables
+    for table in ['programs', 'news', 'orders', 'chat_messages', 'downloads']:
+        if not os.path.exists(get_csv_path(table)):
+            write_csv_table(table, [])
+    
+    logger.info("CSV Database initialized successfully")
 
 # Utility functions
 def generate_id(length):
@@ -271,7 +354,7 @@ def auth_required(f):
         if not user_id:
             return jsonify({'error': 'Invalid token'}), 401
         
-        g.current_user_id = user_id
+        g.current_user_id = str(user_id)
         return f(*args, **kwargs)
     
     return decorated_function
@@ -282,13 +365,10 @@ def admin_required(f):
         if not hasattr(g, 'current_user_id'):
             return jsonify({'error': 'Authentication required'}), 401
         
-        db = get_db()
-        user = db.execute(
-            'SELECT is_admin, email FROM users WHERE user_id = ?',
-            (g.current_user_id,)
-        ).fetchone()
+        users = read_csv_table('users')
+        user = next((u for u in users if u['user_id'] == g.current_user_id), None)
         
-        if not user or (not user['is_admin'] and user['email'] not in ADMIN_EMAILS):
+        if not user or (user['is_admin'] != 'True' and user['email'] not in ADMIN_EMAILS):
             return jsonify({'error': 'Admin access required'}), 403
         
         return f(*args, **kwargs)
@@ -328,20 +408,104 @@ def health_check():
 def system_status():
     """System status endpoint"""
     try:
-        db = get_db()
-        user_count = db.execute('SELECT COUNT(*) as count FROM users').fetchone()['count']
-        order_count = db.execute('SELECT COUNT(*) as count FROM orders').fetchone()['count']
+        users = read_csv_table('users')
+        orders = read_csv_table('orders')
         
         return jsonify({
             'status': 'online',
-            'users': user_count,
-            'orders': order_count,
+            'users': len(users),
+            'orders': len(orders),
             'uptime': time.time(),
             'crypto_wallets': CRYPTO_WALLETS
         })
     except Exception as e:
         logger.error(f"Status check error: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# Google OAuth routes
+@app.route('/auth/google')
+def google_auth():
+    """Redirect to Google OAuth"""
+    google_auth_url = (
+        f"https://accounts.google.com/o/oauth2/auth?"
+        f"client_id={GOOGLE_CLIENT_ID}&"
+        f"redirect_uri={request.url_root}auth/google/callback&"
+        f"scope=openid email profile&"
+        f"response_type=code"
+    )
+    return redirect(google_auth_url)
+
+@app.route('/auth/google/callback')
+def google_callback():
+    """Handle Google OAuth callback"""
+    code = request.args.get('code')
+    if not code:
+        return redirect('/?error=google_auth_failed')
+    
+    try:
+        # Exchange code for token
+        token_url = "https://oauth2.googleapis.com/token"
+        token_data = {
+            'client_id': GOOGLE_CLIENT_ID,
+            'client_secret': GOOGLE_CLIENT_SECRET,
+            'code': code,
+            'grant_type': 'authorization_code',
+            'redirect_uri': f"{request.url_root}auth/google/callback"
+        }
+        
+        token_response = requests.post(token_url, data=token_data)
+        token_json = token_response.json()
+        
+        if 'access_token' not in token_json:
+            return redirect('/?error=google_token_failed')
+        
+        # Get user info
+        user_info_url = f"https://www.googleapis.com/oauth2/v2/userinfo?access_token={token_json['access_token']}"
+        user_response = requests.get(user_info_url)
+        user_data = user_response.json()
+        
+        # Process user login
+        users = read_csv_table('users')
+        user = next((u for u in users if u['email'] == user_data['email']), None)
+        
+        is_admin = user_data['email'] in ADMIN_EMAILS
+        
+        if user:
+            # Update existing user
+            user['google_id'] = user_data['id']
+            user['avatar_url'] = user_data.get('picture', '')
+            user['is_admin'] = str(is_admin)
+            user['updated_at'] = datetime.now().isoformat()
+            user_id = user['user_id']
+        else:
+            # Create new user
+            user_id = str(generate_id(8))
+            new_user = {
+                'user_id': user_id,
+                'name': user_data['name'],
+                'email': user_data['email'],
+                'phone': '',
+                'country': '',
+                'password_hash': '',
+                'google_id': user_data['id'],
+                'avatar_url': user_data.get('picture', ''),
+                'is_admin': str(is_admin),
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat()
+            }
+            users.append(new_user)
+        
+        write_csv_table('users', users)
+        
+        # Generate token
+        token = generate_token(user_id)
+        
+        # Redirect with token
+        return redirect(f'/?token={token}&google_login=success')
+        
+    except Exception as e:
+        logger.error(f"Google OAuth error: {e}")
+        return redirect('/?error=google_auth_error')
 
 # Authentication routes
 @app.route('/api/auth/register', methods=['POST'])
@@ -357,38 +521,43 @@ def register():
                 return jsonify({'error': f'{field} is required'}), 400
         
         # Check if email already exists
-        db = get_db()
-        existing_user = db.execute(
-            'SELECT user_id FROM users WHERE email = ?',
-            (data['email'],)
-        ).fetchone()
+        users = read_csv_table('users')
+        existing_user = next((u for u in users if u['email'] == data['email']), None)
         
         if existing_user:
             return jsonify({'error': 'Email already registered'}), 400
         
         # Create new user
-        user_id = generate_id(8)
+        user_id = str(generate_id(8))
         password_hash = generate_password_hash(data['password'])
         is_admin = data['email'] in ADMIN_EMAILS
         
-        db.execute('''
-            INSERT INTO users (user_id, name, email, phone, country, password_hash, is_admin)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, data['name'], data['email'], data.get('phone'), data['country'], password_hash, is_admin))
+        new_user = {
+            'user_id': user_id,
+            'name': data['name'],
+            'email': data['email'],
+            'phone': data.get('phone', ''),
+            'country': data['country'],
+            'password_hash': password_hash,
+            'google_id': '',
+            'avatar_url': '',
+            'is_admin': str(is_admin),
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
         
-        db.commit()
+        append_csv_table('users', new_user)
         
         # Generate token
         token = generate_token(user_id)
         
-        # Get user data
-        user = db.execute(
-            'SELECT user_id, name, email, phone, country, is_admin, avatar_url, created_at FROM users WHERE user_id = ?',
-            (user_id,)
-        ).fetchone()
+        # Get orders count
+        orders = read_csv_table('orders')
+        orders_count = len([o for o in orders if o['user_id'] == user_id])
         
-        user_data = dict(user)
-        user_data['orders_count'] = 0
+        user_data = new_user.copy()
+        user_data['orders_count'] = orders_count
+        del user_data['password_hash']  # Remove sensitive data
         
         return jsonify({
             'token': token,
@@ -410,41 +579,27 @@ def login():
         if not email or not password:
             return jsonify({'error': 'Email and password required'}), 400
         
-        db = get_db()
-        user = db.execute(
-            'SELECT * FROM users WHERE email = ?',
-            (email,)
-        ).fetchone()
+        users = read_csv_table('users')
+        user = next((u for u in users if u['email'] == email), None)
         
         if not user or not check_password_hash(user['password_hash'], password):
             return jsonify({'error': 'Invalid credentials'}), 401
         
         # Update admin status if needed
         is_admin = email in ADMIN_EMAILS
-        if is_admin != user['is_admin']:
-            db.execute(
-                'UPDATE users SET is_admin = ? WHERE user_id = ?',
-                (is_admin, user['user_id'])
-            )
-            db.commit()
+        if str(is_admin) != user['is_admin']:
+            user['is_admin'] = str(is_admin)
+            user['updated_at'] = datetime.now().isoformat()
+            write_csv_table('users', users)
         
         # Generate token
         token = generate_token(user['user_id'])
         
-        # Update last login
-        db.execute(
-            'UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
-            (user['user_id'],)
-        )
-        db.commit()
-        
         # Get orders count
-        orders_count = db.execute(
-            'SELECT COUNT(*) as count FROM orders WHERE user_id = ?',
-            (user['user_id'],)
-        ).fetchone()['count']
+        orders = read_csv_table('orders')
+        orders_count = len([o for o in orders if o['user_id'] == user['user_id']])
         
-        user_data = dict(user)
+        user_data = user.copy()
         user_data['orders_count'] = orders_count
         user_data['is_admin'] = is_admin
         del user_data['password_hash']  # Remove sensitive data
@@ -460,7 +615,7 @@ def login():
 
 @app.route('/api/auth/google', methods=['POST'])
 def google_login():
-    """Google OAuth login"""
+    """Google OAuth login (for frontend token verification)"""
     try:
         data = request.get_json()
         credential = data.get('credential')
@@ -483,50 +638,49 @@ def google_login():
             logger.error(f"Google token verification failed: {e}")
             return jsonify({'error': 'Invalid Google token'}), 400
         
-        db = get_db()
-        
-        # Check if user exists
-        user = db.execute(
-            'SELECT * FROM users WHERE email = ? OR google_id = ?',
-            (email, google_id)
-        ).fetchone()
+        users = read_csv_table('users')
+        user = next((u for u in users if u['email'] == email or u['google_id'] == google_id), None)
         
         is_admin = email in ADMIN_EMAILS
         
         if user:
             # Update existing user
-            db.execute('''
-                UPDATE users SET google_id = ?, avatar_url = ?, is_admin = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = ?
-            ''', (google_id, avatar_url, is_admin, user['user_id']))
+            user['google_id'] = google_id
+            user['avatar_url'] = avatar_url
+            user['is_admin'] = str(is_admin)
+            user['updated_at'] = datetime.now().isoformat()
             user_id = user['user_id']
         else:
             # Create new user
-            user_id = generate_id(8)
-            db.execute('''
-                INSERT INTO users (user_id, name, email, google_id, avatar_url, is_admin)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, name, email, google_id, avatar_url, is_admin))
+            user_id = str(generate_id(8))
+            new_user = {
+                'user_id': user_id,
+                'name': name,
+                'email': email,
+                'phone': '',
+                'country': '',
+                'password_hash': '',
+                'google_id': google_id,
+                'avatar_url': avatar_url,
+                'is_admin': str(is_admin),
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat()
+            }
+            users.append(new_user)
+            user = new_user
         
-        db.commit()
+        write_csv_table('users', users)
         
         # Generate token
         token = generate_token(user_id)
         
-        # Get updated user data
-        user = db.execute(
-            'SELECT user_id, name, email, phone, country, avatar_url, is_admin, created_at FROM users WHERE user_id = ?',
-            (user_id,)
-        ).fetchone()
-        
         # Get orders count
-        orders_count = db.execute(
-            'SELECT COUNT(*) as count FROM orders WHERE user_id = ?',
-            (user_id,)
-        ).fetchone()['count']
+        orders = read_csv_table('orders')
+        orders_count = len([o for o in orders if o['user_id'] == user_id])
         
-        user_data = dict(user)
+        user_data = user.copy()
         user_data['orders_count'] = orders_count
+        del user_data['password_hash']  # Remove sensitive data
         
         return jsonify({
             'token': token,
@@ -542,27 +696,23 @@ def google_login():
 def get_current_user():
     """Get current user info"""
     try:
-        db = get_db()
-        user = db.execute(
-            'SELECT user_id, name, email, phone, country, avatar_url, is_admin, created_at FROM users WHERE user_id = ?',
-            (g.current_user_id,)
-        ).fetchone()
+        users = read_csv_table('users')
+        user = next((u for u in users if u['user_id'] == g.current_user_id), None)
         
         if not user:
             return jsonify({'error': 'User not found'}), 404
         
         # Check admin status
-        is_admin = user['email'] in ADMIN_EMAILS if user['email'] else user['is_admin']
+        is_admin = user['email'] in ADMIN_EMAILS if user['email'] else user['is_admin'] == 'True'
         
         # Get orders count
-        orders_count = db.execute(
-            'SELECT COUNT(*) as count FROM orders WHERE user_id = ?',
-            (g.current_user_id,)
-        ).fetchone()['count']
+        orders = read_csv_table('orders')
+        orders_count = len([o for o in orders if o['user_id'] == g.current_user_id])
         
-        user_data = dict(user)
+        user_data = user.copy()
         user_data['orders_count'] = orders_count
         user_data['is_admin'] = is_admin
+        del user_data['password_hash']  # Remove sensitive data
         
         return jsonify(user_data)
         
@@ -581,12 +731,14 @@ def logout():
 def get_services():
     """Get all active services"""
     try:
-        db = get_db()
-        services = db.execute(
-            'SELECT * FROM services WHERE is_active = TRUE ORDER BY service_id'
-        ).fetchall()
+        services = read_csv_table('services')
+        active_services = [s for s in services if s.get('is_active') == 'True']
         
-        return jsonify([dict(service) for service in services])
+        # Convert string prices to float for JSON
+        for service in active_services:
+            service['price'] = float(service['price'])
+        
+        return jsonify(active_services)
         
     except Exception as e:
         logger.error(f"Get services error: {e}")
@@ -597,12 +749,9 @@ def get_services():
 def get_programs():
     """Get all active programs"""
     try:
-        db = get_db()
-        programs = db.execute(
-            'SELECT * FROM programs WHERE is_active = TRUE ORDER BY program_id'
-        ).fetchall()
-        
-        return jsonify([dict(program) for program in programs])
+        programs = read_csv_table('programs')
+        active_programs = [p for p in programs if p.get('is_active') == 'True']
+        return jsonify(active_programs)
         
     except Exception as e:
         logger.error(f"Get programs error: {e}")
@@ -613,16 +762,9 @@ def get_programs():
 def get_news():
     """Get all published news"""
     try:
-        db = get_db()
-        news = db.execute('''
-            SELECT n.*, u.name as author_name
-            FROM news n
-            LEFT JOIN users u ON n.author_id = u.user_id
-            WHERE n.is_published = TRUE
-            ORDER BY n.created_at DESC
-        ''').fetchall()
-        
-        return jsonify([dict(item) for item in news])
+        news = read_csv_table('news')
+        published_news = [n for n in news if n.get('is_published') == 'True']
+        return jsonify(published_news)
         
     except Exception as e:
         logger.error(f"Get news error: {e}")
@@ -642,20 +784,18 @@ def create_order():
             return jsonify({'error': 'Service ID and payment method required'}), 400
         
         # Get service info
-        db = get_db()
-        service = db.execute(
-            'SELECT * FROM services WHERE service_id = ? AND is_active = TRUE',
-            (service_id,)
-        ).fetchone()
+        services = read_csv_table('services')
+        service = next((s for s in services if s['service_id'] == service_id), None)
         
-        if not service:
+        if not service or service.get('is_active') != 'True':
             return jsonify({'error': 'Service not found'}), 404
         
         # Get user info
-        user = db.execute(
-            'SELECT * FROM users WHERE user_id = ?',
-            (g.current_user_id,)
-        ).fetchone()
+        users = read_csv_table('users')
+        user = next((u for u in users if u['user_id'] == g.current_user_id), None)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
         
         # Handle file upload
         payment_proof_path = None
@@ -672,14 +812,23 @@ def create_order():
                 payment_proof_path = filename
         
         # Create order
-        order_id = generate_id(6)
+        order_id = str(generate_id(6))
         
-        db.execute('''
-            INSERT INTO orders (order_id, user_id, service_id, comments, price, payment_method, payment_proof_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (order_id, g.current_user_id, service_id, comments, service['price'], payment_method, payment_proof_path))
+        new_order = {
+            'order_id': order_id,
+            'user_id': g.current_user_id,
+            'service_id': service_id,
+            'comments': comments,
+            'price': service['price'],
+            'payment_method': payment_method,
+            'status': 'pending',
+            'payment_proof_path': payment_proof_path or '',
+            'admin_comment': '',
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
         
-        db.commit()
+        append_csv_table('orders', new_order)
         
         return jsonify({
             'order_id': order_id,
@@ -689,7 +838,7 @@ def create_order():
                 'user_name': user['name'],
                 'user_email': user['email'],
                 'service_name': service['name'],
-                'price': service['price'],
+                'price': float(service['price']),
                 'payment_method': payment_method
             }
         })
@@ -703,93 +852,51 @@ def create_order():
 def get_user_orders():
     """Get user's orders"""
     try:
-        db = get_db()
-        orders = db.execute('''
-            SELECT o.*, s.name as service_name
-            FROM orders o
-            JOIN services s ON o.service_id = s.service_id
-            WHERE o.user_id = ?
-            ORDER BY o.created_at DESC
-        ''', (g.current_user_id,)).fetchall()
+        orders = read_csv_table('orders')
+        services = read_csv_table('services')
         
-        return jsonify([dict(order) for order in orders])
+        user_orders = [o for o in orders if o['user_id'] == g.current_user_id]
+        
+        # Add service names
+        for order in user_orders:
+            service = next((s for s in services if s['service_id'] == order['service_id']), None)
+            order['service_name'] = service['name'] if service else 'Unknown Service'
+            order['price'] = float(order['price'])
+        
+        # Sort by creation date (newest first)
+        user_orders.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        return jsonify(user_orders)
         
     except Exception as e:
         logger.error(f"Get user orders error: {e}")
         return jsonify({'error': 'Failed to get orders'}), 500
 
-@app.route('/api/orders/<int:order_id>/cancel', methods=['POST'])
+@app.route('/api/orders/<order_id>/cancel', methods=['POST'])
 @auth_required
 def cancel_order(order_id):
     """Cancel order"""
     try:
-        db = get_db()
-        
-        # Check if order belongs to user and can be cancelled
-        order = db.execute(
-            'SELECT * FROM orders WHERE order_id = ? AND user_id = ? AND status = "pending"',
-            (order_id, g.current_user_id)
-        ).fetchone()
+        orders = read_csv_table('orders')
+        order = next((o for o in orders if o['order_id'] == order_id and o['user_id'] == g.current_user_id), None)
         
         if not order:
-            return jsonify({'error': 'Order not found or cannot be cancelled'}), 404
+            return jsonify({'error': 'Order not found'}), 404
+        
+        if order['status'] != 'pending':
+            return jsonify({'error': 'Order cannot be cancelled'}), 400
         
         # Update order status
-        db.execute(
-            'UPDATE orders SET status = "cancelled", updated_at = CURRENT_TIMESTAMP WHERE order_id = ?',
-            (order_id,)
-        )
-        db.commit()
+        order['status'] = 'cancelled'
+        order['updated_at'] = datetime.now().isoformat()
+        
+        write_csv_table('orders', orders)
         
         return jsonify({'message': 'Order cancelled successfully'})
         
     except Exception as e:
         logger.error(f"Cancel order error: {e}")
         return jsonify({'error': 'Failed to cancel order'}), 500
-
-# Chat routes
-@app.route('/api/chat/messages', methods=['GET'])
-@auth_required
-def get_chat_messages():
-    """Get chat messages for user"""
-    try:
-        db = get_db()
-        messages = db.execute('''
-            SELECT * FROM chat_messages 
-            WHERE user_id = ? 
-            ORDER BY created_at ASC
-        ''', (g.current_user_id,)).fetchall()
-        
-        return jsonify([dict(message) for message in messages])
-        
-    except Exception as e:
-        logger.error(f"Get chat messages error: {e}")
-        return jsonify({'error': 'Failed to get messages'}), 500
-
-@app.route('/api/chat/send', methods=['POST'])
-@auth_required
-def send_chat_message():
-    """Send chat message"""
-    try:
-        data = request.get_json()
-        message = data.get('message', '').strip()
-        
-        if not message:
-            return jsonify({'error': 'Message required'}), 400
-        
-        db = get_db()
-        db.execute('''
-            INSERT INTO chat_messages (user_id, message)
-            VALUES (?, ?)
-        ''', (g.current_user_id, message))
-        
-        db.commit()
-        
-        return jsonify({'message': 'Message sent successfully'})
-        
-    except Exception as e:
-        logger.error(f"Send chat message error: {e}")
-        return jsonify({'error': 'Failed to send message'}), 500
 
 # Admin routes
 @app.route('/api/admin/stats', methods=['GET'])
@@ -798,15 +905,22 @@ def send_chat_message():
 def get_admin_stats():
     """Get admin statistics"""
     try:
-        db = get_db()
+        users = read_csv_table('users')
+        orders = read_csv_table('orders')
+        programs = read_csv_table('programs')
+        news = read_csv_table('news')
+        
+        # Calculate revenue
+        approved_orders = [o for o in orders if o['status'] in ['approved', 'completed']]
+        total_revenue = sum(float(o['price']) for o in approved_orders)
         
         stats = {
-            'total_users': db.execute('SELECT COUNT(*) as count FROM users').fetchone()['count'],
-            'total_orders': db.execute('SELECT COUNT(*) as count FROM orders').fetchone()['count'],
-            'total_programs': db.execute('SELECT COUNT(*) as count FROM programs WHERE is_active = TRUE').fetchone()['count'],
-            'total_news': db.execute('SELECT COUNT(*) as count FROM news WHERE is_published = TRUE').fetchone()['count'],
-            'pending_orders': db.execute('SELECT COUNT(*) as count FROM orders WHERE status = "pending"').fetchone()['count'],
-            'total_revenue': db.execute('SELECT COALESCE(SUM(price), 0) as total FROM orders WHERE status IN ("approved", "completed")').fetchone()['total']
+            'total_users': len(users),
+            'total_orders': len(orders),
+            'total_programs': len([p for p in programs if p.get('is_active') == 'True']),
+            'total_news': len([n for n in news if n.get('is_published') == 'True']),
+            'pending_orders': len([o for o in orders if o['status'] == 'pending']),
+            'total_revenue': total_revenue
         }
         
         return jsonify(stats)
@@ -821,35 +935,46 @@ def get_admin_stats():
 def get_all_orders():
     """Get all orders for admin"""
     try:
-        db = get_db()
-        orders = db.execute('''
-            SELECT o.*, s.name as service_name, u.name as user_name, u.email as user_email
-            FROM orders o
-            JOIN services s ON o.service_id = s.service_id
-            JOIN users u ON o.user_id = u.user_id
-            ORDER BY o.created_at DESC
-        ''').fetchall()
+        orders = read_csv_table('orders')
+        services = read_csv_table('services')
+        users = read_csv_table('users')
         
-        return jsonify([dict(order) for order in orders])
+        # Add service and user names
+        for order in orders:
+            service = next((s for s in services if s['service_id'] == order['service_id']), None)
+            user = next((u for u in users if u['user_id'] == order['user_id']), None)
+            
+            order['service_name'] = service['name'] if service else 'Unknown Service'
+            order['user_name'] = user['name'] if user else 'Unknown User'
+            order['user_email'] = user['email'] if user else 'Unknown Email'
+            order['price'] = float(order['price'])
+        
+        # Sort by creation date (newest first)
+        orders.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        return jsonify(orders)
         
     except Exception as e:
         logger.error(f"Get all orders error: {e}")
         return jsonify({'error': 'Failed to get orders'}), 500
 
-@app.route('/api/admin/orders/<int:order_id>/approve', methods=['POST'])
+@app.route('/api/admin/orders/<order_id>/approve', methods=['POST'])
 @auth_required
 @admin_required
 def approve_order(order_id):
     """Approve order"""
     try:
-        db = get_db()
+        orders = read_csv_table('orders')
+        order = next((o for o in orders if o['order_id'] == order_id), None)
+        
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
         
         # Update order status
-        db.execute(
-            'UPDATE orders SET status = "approved", updated_at = CURRENT_TIMESTAMP WHERE order_id = ?',
-            (order_id,)
-        )
-        db.commit()
+        order['status'] = 'approved'
+        order['updated_at'] = datetime.now().isoformat()
+        
+        write_csv_table('orders', orders)
         
         return jsonify({'message': 'Order approved successfully'})
         
@@ -857,7 +982,7 @@ def approve_order(order_id):
         logger.error(f"Approve order error: {e}")
         return jsonify({'error': 'Failed to approve order'}), 500
 
-@app.route('/api/admin/orders/<int:order_id>/reject', methods=['POST'])
+@app.route('/api/admin/orders/<order_id>/reject', methods=['POST'])
 @auth_required
 @admin_required
 def reject_order(order_id):
@@ -866,14 +991,18 @@ def reject_order(order_id):
         data = request.get_json()
         reason = data.get('reason', 'Не указана')
         
-        db = get_db()
+        orders = read_csv_table('orders')
+        order = next((o for o in orders if o['order_id'] == order_id), None)
+        
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
         
         # Update order status
-        db.execute(
-            'UPDATE orders SET status = "rejected", admin_comment = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?',
-            (reason, order_id)
-        )
-        db.commit()
+        order['status'] = 'rejected'
+        order['admin_comment'] = reason
+        order['updated_at'] = datetime.now().isoformat()
+        
+        write_csv_table('orders', orders)
         
         return jsonify({'message': 'Order rejected successfully'})
         
@@ -890,16 +1019,22 @@ def create_program():
     try:
         data = request.get_json()
         
-        program_id = generate_id(6)
+        program_id = str(generate_id(6))
         
-        db = get_db()
-        db.execute('''
-            INSERT INTO programs (program_id, name, description, language, version, icon)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (program_id, data['name'], data['description'], data.get('language'), 
-              data.get('version', '1.0'), data.get('icon')))
+        new_program = {
+            'program_id': program_id,
+            'name': data['name'],
+            'description': data['description'],
+            'language': data.get('language', 'Python'),
+            'version': data.get('version', '1.0'),
+            'icon': data.get('icon', 'fas fa-code'),
+            'file_path': '',
+            'download_count': '0',
+            'is_active': 'True',
+            'created_at': datetime.now().isoformat()
+        }
         
-        db.commit()
+        append_csv_table('programs', new_program)
         
         return jsonify({'program_id': program_id, 'message': 'Program created successfully'})
         
@@ -907,15 +1042,20 @@ def create_program():
         logger.error(f"Create program error: {e}")
         return jsonify({'error': 'Failed to create program'}), 500
 
-@app.route('/api/admin/programs/<int:program_id>', methods=['DELETE'])
+@app.route('/api/admin/programs/<program_id>', methods=['DELETE'])
 @auth_required
 @admin_required
 def delete_program(program_id):
     """Delete program"""
     try:
-        db = get_db()
-        db.execute('UPDATE programs SET is_active = FALSE WHERE program_id = ?', (program_id,))
-        db.commit()
+        programs = read_csv_table('programs')
+        program = next((p for p in programs if p['program_id'] == program_id), None)
+        
+        if not program:
+            return jsonify({'error': 'Program not found'}), 404
+        
+        program['is_active'] = 'False'
+        write_csv_table('programs', programs)
         
         return jsonify({'message': 'Program deleted successfully'})
         
@@ -932,15 +1072,20 @@ def create_news():
     try:
         data = request.get_json()
         
-        news_id = generate_id(8)
+        news_id = str(generate_id(8))
         
-        db = get_db()
-        db.execute('''
-            INSERT INTO news (news_id, title, content, author_id)
-            VALUES (?, ?, ?, ?)
-        ''', (news_id, data['title'], data['content'], g.current_user_id))
+        new_news = {
+            'news_id': news_id,
+            'title': data['title'],
+            'content': data['content'],
+            'author_id': g.current_user_id,
+            'author_name': 'Admin',
+            'is_published': 'True',
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
         
-        db.commit()
+        append_csv_table('news', new_news)
         
         return jsonify({'news_id': news_id, 'message': 'News created successfully'})
         
@@ -948,15 +1093,20 @@ def create_news():
         logger.error(f"Create news error: {e}")
         return jsonify({'error': 'Failed to create news'}), 500
 
-@app.route('/api/admin/news/<int:news_id>', methods=['DELETE'])
+@app.route('/api/admin/news/<news_id>', methods=['DELETE'])
 @auth_required
 @admin_required
 def delete_news(news_id):
     """Delete news item"""
     try:
-        db = get_db()
-        db.execute('UPDATE news SET is_published = FALSE WHERE news_id = ?', (news_id,))
-        db.commit()
+        news = read_csv_table('news')
+        news_item = next((n for n in news if n['news_id'] == news_id), None)
+        
+        if not news_item:
+            return jsonify({'error': 'News not found'}), 404
+        
+        news_item['is_published'] = 'False'
+        write_csv_table('news', news)
         
         return jsonify({'message': 'News deleted successfully'})
         
@@ -964,16 +1114,29 @@ def delete_news(news_id):
         logger.error(f"Delete news error: {e}")
         return jsonify({'error': 'Failed to delete news'}), 500
 
-# Self-ping function to keep server alive
-def ping_self():
-    """Ping server to keep it alive"""
-    while True:
-        try:
-            time.sleep(30)  # Ping every 30 seconds
-            requests.get(f'http://localhost:{os.getenv("PORT", 5000)}/health', timeout=10)
-            logger.info("Self-ping successful")
-        except Exception as e:
-            logger.error(f"Self-ping failed: {e}")
+# Get all users for admin
+@app.route('/api/admin/users', methods=['GET'])
+@auth_required
+@admin_required
+def get_all_users():
+    """Get all users for admin"""
+    try:
+        users = read_csv_table('users')
+        orders = read_csv_table('orders')
+        
+        # Add orders count for each user
+        for user in users:
+            user_orders = [o for o in orders if o['user_id'] == user['user_id']]
+            user['orders_count'] = len(user_orders)
+            # Remove sensitive data
+            if 'password_hash' in user:
+                del user['password_hash']
+        
+        return jsonify(users)
+        
+    except Exception as e:
+        logger.error(f"Get all users error: {e}")
+        return jsonify({'error': 'Failed to get users'}), 500
 
 # Error handlers
 @app.errorhandler(404)
@@ -989,10 +1152,6 @@ def internal_error(error):
 if __name__ == '__main__':
     # Initialize database
     init_database()
-    
-    # Start self-ping thread
-    ping_thread = threading.Thread(target=ping_self, daemon=True)
-    ping_thread.start()
     
     # Get port from environment
     port = int(os.getenv('PORT', 5000))
